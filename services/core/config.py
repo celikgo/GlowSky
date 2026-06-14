@@ -48,6 +48,15 @@ class Settings(BaseSettings):
     # sandboxed, agent-callable tool. Blank => no container tools loaded.
     tools_dir: str | None = None
 
+    # --- Chemistry prediction/engine backends (adapter-gated) ---
+    # "none" (default) => the tool stays "not configured" and never fabricates values.
+    # ADMET: "rdkit" enables the offline RDKit-QSPR estimator (ESOL + heuristics).
+    admet_backend: str = "none"  # none|rdkit
+    # Docking: "vina" enables the AutoDock Vina subprocess backend (needs vina+obabel).
+    docking_backend: str = "none"  # none|vina
+    vina_bin: str = "vina"
+    obabel_bin: str = "obabel"
+
     # --- Auth & tenancy ---
     # When False (default), the API runs in single-tenant dev mode: every request
     # resolves to a built-in local principal (local-org/owner) — preserving Phase 0's

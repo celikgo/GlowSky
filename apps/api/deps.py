@@ -6,7 +6,7 @@ from fastapi import Depends, Header, HTTPException
 from services.core.auth import DEV_PRINCIPAL, Principal, resolve_token
 from services.core.config import get_settings
 from services.core.db import session_scope
-from services.core.models import Project
+from services.core.models import Library, Project
 
 
 def current_principal(authorization: str | None = Header(default=None)) -> Principal:
@@ -45,3 +45,11 @@ def load_project(session, project_id: str, principal: Principal) -> Project:
     if project is None or project.org_id != principal.org_id:
         raise HTTPException(status_code=404, detail=f"unknown project: {project_id}")
     return project
+
+
+def load_library(session, library_id: str, principal: Principal) -> Library:
+    """Fetch a library enforcing tenant isolation (404 across orgs)."""
+    library = session.get(Library, library_id)
+    if library is None or library.org_id != principal.org_id:
+        raise HTTPException(status_code=404, detail=f"unknown library: {library_id}")
+    return library

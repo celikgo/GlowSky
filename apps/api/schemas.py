@@ -78,3 +78,33 @@ class ProjectResponse(BaseModel):
     description: str | None = None
     target_profile: dict = Field(default_factory=dict)
     created_by: str | None = None
+
+
+# --- Libraries & molecule I/O -------------------------------------------------
+
+
+class LibraryCreate(BaseModel):
+    name: str = Field(..., examples=["Fragment hits"])
+    description: str | None = None
+    kind: str = Field("set", examples=["set", "series", "virtual_screen"])
+
+
+class LibraryResponse(BaseModel):
+    id: str
+    project_id: str
+    name: str
+    description: str | None = None
+    kind: str
+    molecule_count: int = 0
+
+
+class ImportRequest(BaseModel):
+    format: str = Field(..., examples=["smiles", "csv", "sdf"])
+    content: str = Field(..., description="Raw file content in the given format.")
+    smiles_column: str = Field("smiles", description="CSV only: the SMILES column header.")
+    name_column: str = Field("name", description="CSV only: the name column header.")
+
+
+class DiffRequest(BaseModel):
+    smiles_a: str = Field(..., examples=["c1ccccc1"])
+    smiles_b: str = Field(..., examples=["Cc1ccccc1"])

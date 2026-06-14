@@ -93,6 +93,34 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class Library(Base):
+    """A named, ordered collection of molecules within a project (docs/06)."""
+
+    __tablename__ = "libraries"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(Text, default=None)
+    kind: Mapped[str] = mapped_column(String, default="set")  # set|series|virtual_screen
+    columns_config: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class LibraryMembership(Base):
+    """Join of Library <-> Molecule. A molecule can belong to many libraries."""
+
+    __tablename__ = "library_memberships"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    library_id: Mapped[str] = mapped_column(ForeignKey("libraries.id"), index=True)
+    molecule_id: Mapped[str] = mapped_column(ForeignKey("molecules.id"), index=True)
+    added_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), default=None)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class AuditEvent(Base):
     """Security/compliance trail — one row per consequential action (docs/07 §10)."""
 

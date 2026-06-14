@@ -9,6 +9,11 @@ Endpoints:
   GET  /projects/{id}           a project (404 across tenants)
   GET  /projects/{id}/molecules molecules in a project
   GET  /projects/{id}/runs      agent runs in a project
+  POST /projects/{id}/libraries create a library; GET lists them
+  GET  /libraries/{id}          a library + its molecules
+  POST /libraries/{id}/import   import SMILES/CSV/SDF (firewalled + InChIKey-deduped)
+  GET  /libraries/{id}/export   export SMILES/CSV/SDF (?format=)
+  POST /molecules/diff          two molecules + per-descriptor deltas
   GET  /tools                   the typed tool registry (specs + compute class)
   POST /tools/{name}            execute any registered tool through the execution service
   POST /molecules/validate      validation firewall
@@ -16,7 +21,7 @@ Endpoints:
   POST /agent/design            the agentic design loop (plan -> tools -> synthesize)
 
 Auth is gated by GLOWSKY_AUTH_ENABLED (default off -> single-tenant dev mode).
-Phase 1 next adds WebSocket streaming polish and the slow-path worker queue.
+ADMET/docking backends are adapter-gated (GLOWSKY_ADMET_BACKEND / _DOCKING_BACKEND).
 """
 from __future__ import annotations
 
@@ -24,13 +29,18 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from sqlalchemy import select
+from fastapi.responses import PlainTextResponse
+from sqlalchemy import func, select
 
-from apps.api.deps import current_principal, load_project, require_write
+from apps.api.deps import current_principal, load_library, load_project, require_write
 from apps.api.schemas import (
     BatchSubmitRequest,
     DesignRequest,
+    DiffRequest,
+    ImportRequest,
     JobSubmitRequest,
+    LibraryCreate,
+    LibraryResponse,
     PrincipalResponse,
     ProfileRequest,
     ProjectCreate,
@@ -42,11 +52,13 @@ from apps.api.schemas import (
 )
 from services.agent.orchestrator import DesignOrchestrator
 from services.chemistry.adapters import BackendNotConfigured
+from services.chemistry.adapters.wiring import configure_backends
+from services.chemistry import io as chem_io
 from services.chemistry.properties import profile
 from services.chemistry.validation import validate_and_canonicalize
 from services.core.auth import Principal, audit, signup
 from services.core.db import init_db, session_scope
-from services.core.models import AgentRun, Molecule, Project
+from services.core.models import AgentRun, Library, LibraryMembership, Molecule, Project
 from services.llm_gateway.gateway import LLMGateway
 from services.llm_gateway.types import TaskClass
 from services.tools.catalog import build_registry
@@ -58,6 +70,9 @@ from services.tools.store import get_store, is_terminal
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Select adapter-gated backends (ADMET/docking) per config. In eager mode this also
+    # configures the in-process slow path; distributed workers self-configure on boot.
+    app.state.backends = configure_backends()
     app.state.gateway = LLMGateway()
     app.state.registry = build_registry()  # built-ins + container tools (GLOWSKY_TOOLS_DIR)
     app.state.executor = ToolExecutionService(app.state.registry)
@@ -79,6 +94,7 @@ def health() -> dict:
             "codegen": gw.route_for(TaskClass.CODEGEN),
         },
         "tools": len(app.state.registry.list()),
+        "backends": app.state.backends,
     }
 
 
@@ -182,6 +198,159 @@ def _project_response(p: Project) -> ProjectResponse:
         id=p.id, org_id=p.org_id, name=p.name, description=p.description,
         target_profile=p.target_profile, created_by=p.created_by,
     )
+
+
+# --- Libraries & molecule I/O --------------------------------------------------
+
+def _library_response(s, lib: Library) -> LibraryResponse:
+    count = s.scalar(
+        select(func.count()).select_from(LibraryMembership)
+        .where(LibraryMembership.library_id == lib.id)
+    ) or 0
+    return LibraryResponse(
+        id=lib.id, project_id=lib.project_id, name=lib.name,
+        description=lib.description, kind=lib.kind, molecule_count=count,
+    )
+
+
+@app.post("/projects/{project_id}/libraries", response_model=LibraryResponse, status_code=201)
+def create_library(
+    project_id: str, req: LibraryCreate, principal: Principal = Depends(require_write)
+) -> LibraryResponse:
+    with session_scope() as s:
+        load_project(s, project_id, principal)  # tenant check
+        lib = Library(
+            org_id=principal.org_id, project_id=project_id, name=req.name,
+            description=req.description, kind=req.kind, created_by=principal.user_id,
+        )
+        s.add(lib)
+        s.flush()
+        audit(s, principal, "library.create", "library", lib.id, {"name": lib.name})
+        return _library_response(s, lib)
+
+
+@app.get("/projects/{project_id}/libraries", response_model=list[LibraryResponse])
+def list_libraries(
+    project_id: str, principal: Principal = Depends(current_principal)
+) -> list[LibraryResponse]:
+    with session_scope() as s:
+        load_project(s, project_id, principal)
+        rows = s.scalars(
+            select(Library).where(Library.project_id == project_id)
+            .order_by(Library.created_at.desc())
+        ).all()
+        return [_library_response(s, lib) for lib in rows]
+
+
+@app.get("/libraries/{library_id}")
+def get_library(library_id: str, principal: Principal = Depends(current_principal)) -> dict:
+    with session_scope() as s:
+        lib = load_library(s, library_id, principal)
+        mols = _library_molecules(s, library_id)
+        return {
+            "library": _library_response(s, lib).model_dump(),
+            "molecules": [
+                {"id": m.id, "name": m.name, "canonical_smiles": m.canonical_smiles,
+                 "inchikey": m.inchikey, "properties": m.properties, "source": m.source}
+                for m in mols
+            ],
+        }
+
+
+@app.post("/libraries/{library_id}/import", status_code=201)
+def import_molecules(
+    library_id: str, req: ImportRequest, principal: Principal = Depends(require_write)
+) -> dict:
+    """Parse SMILES/CSV/SDF, firewall every structure, dedup by InChIKey within the
+    project, and add the molecules to the library. Bad rows are reported, not fatal."""
+    try:
+        parsed = chem_io.parse(
+            req.content, req.format,
+            **({"smiles_column": req.smiles_column, "name_column": req.name_column}
+               if req.format.lower() == "csv" else {}),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    imported, duplicates, invalid = 0, 0, []
+    with session_scope() as s:
+        lib = load_library(s, library_id, principal)
+        for pm in parsed:
+            if not pm.valid:
+                invalid.append({"input": pm.input, "error": pm.error})
+                continue
+            # Dedup molecules by (project, inchikey); reuse the existing row if present.
+            mol = s.scalar(
+                select(Molecule).where(
+                    Molecule.org_id == principal.org_id,
+                    Molecule.project_id == lib.project_id,
+                    Molecule.inchikey == pm.inchikey,
+                )
+            )
+            if mol is None:
+                mol = Molecule(
+                    org_id=principal.org_id, project_id=lib.project_id,
+                    name=pm.name, canonical_smiles=pm.canonical_smiles,
+                    inchikey=pm.inchikey, properties=pm.properties, source="import",
+                    created_by=principal.user_id,
+                )
+                s.add(mol)
+                s.flush()
+            # Add to the library if not already a member.
+            exists = s.scalar(
+                select(LibraryMembership).where(
+                    LibraryMembership.library_id == library_id,
+                    LibraryMembership.molecule_id == mol.id,
+                )
+            )
+            if exists is None:
+                s.add(LibraryMembership(
+                    library_id=library_id, molecule_id=mol.id, added_by=principal.user_id))
+                imported += 1
+            else:
+                duplicates += 1
+        audit(s, principal, "library.import", "library", library_id,
+              {"format": req.format, "imported": imported, "invalid": len(invalid)})
+
+    return {"imported": imported, "duplicates": duplicates,
+            "invalid": invalid, "invalid_count": len(invalid)}
+
+
+@app.get("/libraries/{library_id}/export")
+def export_library(
+    library_id: str, format: str = "smiles", principal: Principal = Depends(current_principal)
+) -> PlainTextResponse:
+    if format.lower() not in chem_io.SUPPORTED_FORMATS:
+        raise HTTPException(status_code=422,
+                            detail=f"unsupported format; use one of {chem_io.SUPPORTED_FORMATS}")
+    with session_scope() as s:
+        load_library(s, library_id, principal)
+        mols = _library_molecules(s, library_id)
+        rows = [chem_io.ExportRow(canonical_smiles=m.canonical_smiles, name=m.name,
+                                  properties=m.properties or {}) for m in mols]
+    body = chem_io.serialize(rows, format)
+    ext = {"smiles": "smi", "csv": "csv", "sdf": "sdf"}[format.lower()]
+    return PlainTextResponse(
+        body, media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="library-{library_id}.{ext}"'},
+    )
+
+
+def _library_molecules(s, library_id: str) -> list[Molecule]:
+    return s.scalars(
+        select(Molecule).join(LibraryMembership, LibraryMembership.molecule_id == Molecule.id)
+        .where(LibraryMembership.library_id == library_id)
+        .order_by(LibraryMembership.added_at)
+    ).all()
+
+
+@app.post("/molecules/diff")
+def molecule_diff(req: DiffRequest) -> dict:
+    """Compare two molecules: identity + per-descriptor deltas (B − A)."""
+    try:
+        return chem_io.diff_molecules(req.smiles_a, req.smiles_b)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/tools")

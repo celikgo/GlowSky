@@ -1,0 +1,51 @@
+# Glowsky local deployment — full stack on Docker.
+#
+#   make tool-example        # build the example container tool image (on the host daemon)
+#   docker compose up --build # redis + api + worker
+#   curl localhost:8000/health
+#
+# The API and worker run the SAME image (different commands). The worker mounts the
+# host Docker socket so it can launch sandboxed CONTAINER tools (docker-out-of-docker).
+# NOTE: mounting docker.sock is root-equivalent on the host — fine for local dev; in
+# production use a rootless/sysbox/gVisor builder or a dedicated tool-runner service.
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    command: uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      GLOWSKY_REDIS_URL: redis://redis:6379/0
+      GLOWSKY_DATABASE_URL: sqlite:////data/glowsky.db
+      GLOWSKY_TOOLS_DIR: /tools
+    volumes:
+      - ./examples/tools:/tools:ro     # container-tool manifests (read-only)
+      - glowsky-data:/data             # persistent SQLite
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    command: celery -A services.tools.queue.celery_app worker --loglevel=info
+    environment:
+      GLOWSKY_REDIS_URL: redis://redis:6379/0
+      GLOWSKY_DATABASE_URL: sqlite:////data/glowsky.db
+      GLOWSKY_TOOLS_DIR: /tools
+    volumes:
+      - ./examples/tools:/tools:ro
+      - glowsky-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock   # launch sandboxed tool containers
+    depends_on:
+      - redis
+
+volumes:
+  glowsky-data:

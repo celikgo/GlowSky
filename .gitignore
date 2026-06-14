@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.venv313/
+*.egg-info/
+.pytest_cache/
+
+# Env & secrets — NEVER commit
+.env
+*.key
+
+# Local data
+*.db
+*.sqlite3
+glowsky.db
+
+# IDE
+.idea/
+.vscode/
+
+# Claude Code — personal/local settings
+.claude/settings.local.json

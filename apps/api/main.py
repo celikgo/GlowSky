@@ -29,6 +29,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, select
 
@@ -102,6 +103,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Glowsky API", version="0.0.1", lifespan=lifespan)
+
+# The desktop webview and the dev server are cross-origin to this API; without these
+# headers the browser blocks every request (the app shows "Backend offline").
+_cors = get_settings().cors_origin_list
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors,
+    allow_origin_regex=None if "*" not in _cors else ".*",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")

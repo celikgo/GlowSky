@@ -70,6 +70,18 @@ class Settings(BaseSettings):
     # (minted via POST /auth/signup) and all data is scoped to the key's org.
     auth_enabled: bool = False
 
+    # --- CORS ---
+    # Origins allowed to call the API from a browser/webview. The desktop app's webview
+    # (Tauri) and the Vite dev server are cross-origin to the API, so they must be listed
+    # or the browser blocks every request. Comma-separated; "*" allows any origin.
+    cors_origins: str = (
+        "http://localhost:1420,http://127.0.0.1:1420,tauri://localhost,http://tauri.localhost"
+    )
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     # --- App ---
     app_name: str = "Glowsky"
     environment: str = "dev"

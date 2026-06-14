@@ -2,7 +2,7 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-47%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-54%20passing-brightgreen.svg)](tests/)
 [![Status: Phase 0](https://img.shields.io/badge/status-Phase%200%20scaffold-orange.svg)](docs/09-roadmap.md)
 [![Code style: RDKit](https://img.shields.io/badge/chemistry-RDKit-26a69a.svg)](https://www.rdkit.org/)
 
@@ -49,7 +49,7 @@ Phase 0 proves the two hardest integrations end-to-end: the **BYO-LLM gateway** 
 
 ```bash
 make venv && make install     # create .venv313 + install (editable)
-make test                     # 45 tests: firewall, tools subsystem, slow-path + streaming, container runtime, gateway, agent loop, API
+make test                     # 54 tests: firewall, tools subsystem, slow-path + streaming, container runtime, gateway, agent loop, API, auth/tenancy
 make demo                     # run a sample design loop, print results + provenance
 make run                      # start the API at http://localhost:8000  (/docs for Swagger)
 ```
@@ -142,10 +142,37 @@ result with image-pinned provenance.
 | **BYO-LLM gateway** | `services/llm_gateway/` | LiteLLM-backed multi-provider access + offline mock; task-class routing; keys resolved only at call time, never logged |
 | **Agent orchestrator** | `services/agent/orchestrator.py` | Plan (LLM) → generate → profile → filter → rank → synthesize (LLM); every chemistry call routes through the execution service, with a full provenance trace |
 | **API + persistence** | `apps/api/` + `services/core/` | FastAPI endpoints incl. generic `POST /tools/{name}`; runs + molecules stored with provenance (`origin_run_id`) in SQLite |
+| **Auth & tenancy** *(Phase 1)* | `services/core/auth.py`, `apps/api/deps.py` | Org/user/membership/project model, bearer **API-key** auth (hash-at-rest), tenant-scoped projects/runs/molecules, and an audit trail — all gated behind `GLOWSKY_AUTH_ENABLED` so dev mode stays zero-setup |
 
 Layout follows `docs/11-folder-structure.md` + `docs/13-chemistry-tools-architecture.md`.
-Phase 1 wires the slow-path Celery/Redis queue, real ADMET/docking backends, auth/tenancy,
-WebSocket streaming, 2D/3D viewers, and notebook export.
+Phase 1 (in progress) adds the auth/tenancy spine (done — see below), and next wires the
+slow-path Celery/Redis queue, real ADMET/docking backends, WebSocket streaming polish,
+2D/3D viewers, and notebook export.
+
+**Auth & multi-tenancy (Phase 1).** Off by default — every request resolves to a built-in
+local owner, so the Phase 0 commands above need no token. Flip `GLOWSKY_AUTH_ENABLED=true`
+to require a per-org **bearer API key**; data is then isolated per tenant.
+
+```bash
+# Mint an org + API key (the key is shown exactly once):
+KEY=$(curl -s localhost:8000/auth/signup -H 'content-type: application/json' \
+  -d '{"email":"maya@lab.edu","org_name":"Maya Lab"}' \
+  | python -c 'import sys,json;print(json.load(sys.stdin)["api_key"])')
+
+# Create a project and run a design scoped to it (only this org can see it):
+PID=$(curl -s localhost:8000/projects -H "authorization: Bearer $KEY" \
+  -H 'content-type: application/json' -d '{"name":"Kinase series"}' \
+  | python -c 'import sys,json;print(json.load(sys.stdin)["id"])')
+curl -s localhost:8000/agent/design -H "authorization: Bearer $KEY" \
+  -H 'content-type: application/json' \
+  -d "{\"goal\":\"make 8 analogs, MW<300, no PAINS\",\"seed_smiles\":\"c1ccccc1C(=O)O\",\"project_id\":\"$PID\"}"
+curl -s localhost:8000/projects/$PID/runs -H "authorization: Bearer $KEY"   # provenance, scoped
+```
+
+> Bearer API keys are the Phase 1 auth primitive (fully testable headlessly). Email/OAuth
+> (Google/GitHub/ORCID) sign-in arrives with the frontend; the org/membership model is
+> already in place for it. Schema evolution currently uses `create_all`; Alembic migrations
+> are the next follow-up.
 
 ---
 

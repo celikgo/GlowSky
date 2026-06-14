@@ -37,3 +37,44 @@ class DesignRequest(BaseModel):
     )
     seed_smiles: str = Field(..., examples=["c1ccccc1C(=O)O"])
     persist: bool = True
+    project_id: str | None = Field(
+        default=None, description="Scope the run + its molecules to this project."
+    )
+
+
+# --- Auth & tenancy -----------------------------------------------------------
+
+
+class SignupRequest(BaseModel):
+    email: str = Field(..., examples=["maya@lab.edu"])
+    org_name: str = Field("Personal", examples=["Maya's Lab"])
+
+
+class SignupResponse(BaseModel):
+    org_id: str
+    user_id: str
+    email: str
+    # Plaintext API key — returned exactly once. Send as `Authorization: Bearer <key>`.
+    api_key: str
+
+
+class PrincipalResponse(BaseModel):
+    user_id: str
+    org_id: str
+    role: str
+    email: str | None = None
+
+
+class ProjectCreate(BaseModel):
+    name: str = Field(..., examples=["Kinase inhibitor series"])
+    description: str | None = None
+    target_profile: dict = Field(default_factory=dict)
+
+
+class ProjectResponse(BaseModel):
+    id: str
+    org_id: str
+    name: str
+    description: str | None = None
+    target_profile: dict = Field(default_factory=dict)
+    created_by: str | None = None

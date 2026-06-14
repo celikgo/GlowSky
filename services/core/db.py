@@ -22,8 +22,18 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 def init_db() -> None:
-    """Create tables. Phase 0 convenience; Phase 1 uses Alembic migrations."""
+    """Create tables + seed the built-in local tenant.
+
+    Dev convenience (create_all); a follow-up introduces Alembic migrations for
+    schema evolution. Seeding the local org/user keeps single-tenant dev mode's
+    foreign keys satisfiable.
+    """
     Base.metadata.create_all(engine)
+    # Imported here to avoid a circular import (auth -> models, db -> models).
+    from services.core.auth import seed_local_tenant
+
+    with session_scope() as session:
+        seed_local_tenant(session)
 
 
 @contextmanager

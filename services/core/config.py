@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     # sandboxed, agent-callable tool. Blank => no container tools loaded.
     tools_dir: str | None = None
 
+    # --- Auth & tenancy ---
+    # When False (default), the API runs in single-tenant dev mode: every request
+    # resolves to a built-in local principal (local-org/owner) — preserving Phase 0's
+    # zero-setup, offline ergonomics. When True, endpoints require a bearer API key
+    # (minted via POST /auth/signup) and all data is scoped to the key's org.
+    auth_enabled: bool = False
+
     # --- App ---
     app_name: str = "Glowsky"
     environment: str = "dev"

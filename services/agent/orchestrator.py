@@ -93,8 +93,10 @@ class DesignOrchestrator:
         )
         return (await self._gw.complete(req)).text
 
-    async def run(self, goal: str, seed_smiles: str) -> DesignRunResult:
-        ctx = ExecutionContext()
+    async def run(
+        self, goal: str, seed_smiles: str, ctx: ExecutionContext | None = None
+    ) -> DesignRunResult:
+        ctx = ctx or ExecutionContext()
         trace: list[ToolCallRecord] = []
         step = 0
 

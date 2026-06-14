@@ -118,6 +118,48 @@ export interface ImportResult {
 
 export type IoFormat = "smiles" | "csv" | "sdf";
 
+// --- tools -------------------------------------------------------------------
+
+export interface JsonSchemaProp {
+  type: string;
+  items?: { type: string };
+}
+
+export interface ToolParameters {
+  type: string;
+  properties?: Record<string, JsonSchemaProp>;
+  required?: string[];
+}
+
+export interface ToolSpec {
+  name: string;
+  version: string;
+  category: string;
+  description: string;
+  parameters: ToolParameters;
+  compute_class: string;
+  latency_class: string;
+  emits_structures: boolean;
+}
+
+export interface ToolProvenance {
+  tool: string;
+  version: string;
+  compute_class: string;
+  determinism: string;
+  env_digest: string;
+  input_hash: string;
+  cache_hit: boolean;
+  duration_ms: number;
+  seed: number | null;
+  error: string | null;
+}
+
+export interface ToolRunResult {
+  output: unknown;
+  provenance: ToolProvenance;
+}
+
 // --- endpoints ---------------------------------------------------------------
 
 export const api = {
@@ -145,6 +187,14 @@ export const api = {
     }),
   exportLibraryUrl: (libraryId: string, format: IoFormat) =>
     `${BASE}/libraries/${libraryId}/export?format=${format}`,
+
+  // tools
+  listTools: () => request<{ tools: ToolSpec[] }>("/tools").then((r) => r.tools),
+  runTool: (name: string, args: Record<string, unknown>, seed?: number) =>
+    request<ToolRunResult>(`/tools/${name}`, {
+      method: "POST",
+      body: JSON.stringify(seed === undefined ? { args } : { args, seed }),
+    }),
   design: (goal: string, seed_smiles: string) =>
     request<DesignResult>("/agent/design", {
       method: "POST",

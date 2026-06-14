@@ -46,7 +46,8 @@ src/
   hooks/useRDKit.ts   React hook exposing the RDKit module when ready
   components/    Sidebar, TopBar (health pill), MoleculeStructure (RDKit 2D SVG)
   screens/       DesignScreen (agentic loop), LibraryScreen (projects + I/O),
-                 MoleculeCard, LibraryMoleculeCard, Placeholder
+                 ToolsScreen (registry playground), MoleculeCard,
+                 LibraryMoleculeCard, Placeholder
 src-tauri/      the Rust shell (window config, icons, capabilities)
 ```
 
@@ -62,8 +63,15 @@ The **Library** screen manages projects and libraries against the I/O endpoints:
 create a project, create libraries, **import** molecules by pasting SMILES / CSV / SDF
 (firewalled + InChIKey-deduped server-side; invalid rows reported, not fatal), browse them
 as cards with 2D structures and property chips (imported CSV columns included), and
-**export** the set as SMILES / CSV / SDF. Tools / Settings remain placeholders whose
-backend seams already exist.
+**export** the set as SMILES / CSV / SDF.
+
+The **Tools** screen is a playground over the typed tool registry (`GET /tools`): browse
+the 15 built-in tools grouped by category, pick one to get a **form generated from its
+JSON-schema parameters** (string / number / array inputs, with sensible prefills), run it
+(`POST /tools/{name}`, optional seed), and see the provenance (compute class, duration,
+cache hit, determinism), any structures in the output rendered 2D, and the raw JSON.
+Adapter-gated tools (ADMET/docking) surface their "not configured" error cleanly. Settings
+remains a placeholder whose backend seam already exists.
 
 ### 2D structure rendering (RDKit-JS, offline)
 

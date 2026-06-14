@@ -3,6 +3,7 @@ import { Sidebar, type NavKey } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { DesignScreen } from "./screens/DesignScreen";
 import { LibraryScreen } from "./screens/LibraryScreen";
+import { ToolsScreen } from "./screens/ToolsScreen";
 import { Placeholder } from "./screens/Placeholder";
 import "./App.css";
 
@@ -26,6 +27,8 @@ export default function App() {
             <DesignScreen />
           ) : nav === "library" ? (
             <LibraryScreen />
+          ) : nav === "tools" ? (
+            <ToolsScreen />
           ) : (
             <Placeholder
               title={TITLES[nav]}

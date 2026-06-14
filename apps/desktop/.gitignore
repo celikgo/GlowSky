@@ -5,6 +5,10 @@ node_modules/
 dist/
 dist-ssr/
 
+# RDKit-JS runtime staged from node_modules by scripts/copy-rdkit.mjs
+public/RDKit_minimal.js
+public/RDKit_minimal.wasm
+
 # Tauri (Rust) build artifacts + generated schemas
 src-tauri/target/
 src-tauri/gen/

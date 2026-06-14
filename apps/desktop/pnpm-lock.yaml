@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@rdkit/rdkit':
+        specifier: 2025.3.4-1.0.0
+        version: 2025.3.4-1.0.0
       '@tauri-apps/api':
         specifier: ^2.1.1
         version: 2.11.0
@@ -296,6 +299,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@rdkit/rdkit@2025.3.4-1.0.0':
+    resolution: {integrity: sha512-MJzNoeW2SWt2KCdIibfY213uLWyHZjFfS2ntJ/HuYNHdu6dEiim7jb6ZMU9wnt9Oovkc85BHMuupxkufIMvftQ==}
 
   '@rolldown/pluginutils@1.0.0-beta.27':
     resolution: {integrity: sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA==}
@@ -950,6 +956,8 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@rdkit/rdkit@2025.3.4-1.0.0': {}
 
   '@rolldown/pluginutils@1.0.0-beta.27': {}
 

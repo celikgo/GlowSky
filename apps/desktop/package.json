@@ -5,6 +5,9 @@
   "type": "module",
   "description": "Glowsky desktop app — the AI-native workspace for small-molecule drug design.",
   "scripts": {
+    "postinstall": "node scripts/copy-rdkit.mjs",
+    "predev": "node scripts/copy-rdkit.mjs",
+    "prebuild": "node scripts/copy-rdkit.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
@@ -13,10 +16,11 @@
     "desktop:build": "tauri build"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "@rdkit/rdkit": "2025.3.4-1.0.0",
     "@tauri-apps/api": "^2.1.1",
-    "@tauri-apps/plugin-opener": "^2.2.2"
+    "@tauri-apps/plugin-opener": "^2.2.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",
@@ -27,6 +31,8 @@
     "vite": "^6.0.3"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

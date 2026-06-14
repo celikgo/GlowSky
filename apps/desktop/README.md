@@ -42,7 +42,9 @@ pnpm desktop:build   # produce a native installer (.dmg/.app, .msi, .deb/.AppIma
 src/
   theme/        tokens.css (the Twitter Dim palette) + global.css primitives
   lib/api.ts    typed FastAPI client (health, design, profile, run export)
-  components/    Sidebar, TopBar (live backend-health pill)
+  lib/rdkit.ts  lazy single-flight loader for the RDKit-JS WASM module
+  hooks/useRDKit.ts   React hook exposing the RDKit module when ready
+  components/    Sidebar, TopBar (health pill), MoleculeStructure (RDKit 2D SVG)
   screens/       DesignScreen (the agentic design loop), MoleculeCard, Placeholder
 src-tauri/      the Rust shell (window config, icons, capabilities)
 ```
@@ -51,9 +53,18 @@ src-tauri/      the Rust shell (window config, icons, capabilities)
 
 The **Design** screen drives the backend's agentic design loop end-to-end: enter a
 natural-language goal + a seed SMILES, run it, and see the plan, candidate molecules
-(property chips, pass/fail), the agent's explanation, and the execution trace — plus
-one-click notebook/report export of the run. Library / Tools / Settings are placeholders
-whose backend seams already exist.
+with **2D structure depictions** (rendered client-side by RDKit-JS), property chips,
+pass/fail, the agent's explanation, and the execution trace — plus one-click
+notebook/report export of the run. Library / Tools / Settings are placeholders whose
+backend seams already exist.
+
+### 2D structure rendering (RDKit-JS, offline)
+
+Structures are drawn in-browser by the **RDKit WebAssembly** build (`@rdkit/rdkit`) —
+no server round-trip, no CDN. `scripts/copy-rdkit.mjs` stages the loader + `.wasm`
+(~6.9 MB) into `public/` on install / before dev / before build; the module loads lazily
+and instantiates once (`src/lib/rdkit.ts`), so the app bundle stays ~150 KB. Each
+`MoleculeStructure` validates the SMILES and frees the WASM-side molecule after drawing.
 
 ## Troubleshooting
 

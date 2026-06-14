@@ -67,7 +67,7 @@ def test_import_csv_with_properties_and_dedup():
         assert any(m["properties"].get("IC50") == "12.5" for m in mols)
 
 
-def test_reimport_merges_properties_onto_existing_molecule():
+def test_reimport_fills_empty_fields_but_never_overwrites():
     with TestClient(app) as client:
         pid = client.post("/projects", json={"name": "Merge project"}).json()["id"]
         lid = client.post(f"/projects/{pid}/libraries", json={"name": "Merge"}).json()["id"]
@@ -77,7 +77,7 @@ def test_reimport_merges_properties_onto_existing_molecule():
                             json={"format": "smiles", "content": "CCO ethanol"})
         assert first.json()["imported"] == 1
 
-        # Second import: same molecule with an assay column -> property is merged in.
+        # Second import: same molecule with an assay column -> empty field is filled.
         second = client.post(f"/libraries/{lid}/import", json={
             "format": "csv", "content": "smiles,name,IC50\nCCO,ethanol,12.5"})
         body = second.json()
@@ -87,10 +87,19 @@ def test_reimport_merges_properties_onto_existing_molecule():
         mols = client.get(f"/libraries/{lid}").json()["molecules"]
         assert mols[0]["properties"]["IC50"] == "12.5"
 
-        # A third identical import changes nothing.
-        third = client.post(f"/libraries/{lid}/import", json={
-            "format": "csv", "content": "smiles,name,IC50\nCCO,ethanol,12.5"})
-        assert third.json()["updated"] == 0
+        # Re-import with a CONFLICTING value -> existing value is preserved, not overwritten.
+        conflict = client.post(f"/libraries/{lid}/import", json={
+            "format": "csv", "content": "smiles,name,IC50\nCCO,ethanol,999"})
+        assert conflict.json()["updated"] == 0
+        mols = client.get(f"/libraries/{lid}").json()["molecules"]
+        assert mols[0]["properties"]["IC50"] == "12.5"  # unchanged
+
+        # A new, still-empty column IS filled while the existing one stays put.
+        more = client.post(f"/libraries/{lid}/import", json={
+            "format": "csv", "content": "smiles,name,IC50,logD\nCCO,ethanol,999,1.2"})
+        assert more.json()["updated"] == 1
+        props = client.get(f"/libraries/{lid}").json()["molecules"][0]["properties"]
+        assert props["IC50"] == "12.5" and props["logD"] == "1.2"
 
 
 def test_molecule_diff_endpoint():

@@ -327,19 +327,27 @@ def import_molecules(
             "invalid": invalid, "invalid_count": len(invalid)}
 
 
-def _merge_into(mol: Molecule, pm) -> bool:
-    """Fold an imported record's properties (and name) into an existing molecule.
+def _is_empty(v) -> bool:
+    return v is None or v == ""
 
-    New keys are added and overlapping keys overwritten with the imported value;
-    a missing name is backfilled. Reassigns `properties` (rather than mutating in
+
+def _merge_into(mol: Molecule, pm) -> bool:
+    """Fill empty/missing fields on an existing molecule from an imported record.
+
+    Fill-only, never overwrite: an imported value is applied only where the molecule
+    has no value (key absent or empty) for that key; existing non-empty values and a
+    non-empty name are left untouched. Reassigns `properties` (rather than mutating in
     place) so SQLAlchemy detects the JSON change. Returns True if anything changed.
     """
     changed = False
     if pm.properties:
-        merged = {**(mol.properties or {}), **pm.properties}
-        if merged != (mol.properties or {}):
+        merged = dict(mol.properties or {})
+        for key, value in pm.properties.items():
+            if not _is_empty(value) and _is_empty(merged.get(key)):
+                merged[key] = value
+                changed = True
+        if changed:
             mol.properties = merged
-            changed = True
     if pm.name and not mol.name:
         mol.name = pm.name
         changed = True

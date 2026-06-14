@@ -35,6 +35,9 @@ up:                  ## Build + run the full stack (redis + api + worker)
 down:                ## Stop the stack
 	docker compose down
 
+up-docking:          ## Build + run the stack with real Vina/OpenBabel docking (amd64; emulated on Apple Silicon)
+	docker compose -f docker-compose.yml -f docker-compose.docking.yml up --build
+
 migrate:             ## Apply all pending migrations (alembic upgrade head)
 	$(ALEMBIC) upgrade head
 

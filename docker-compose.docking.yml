@@ -1,0 +1,34 @@
+# Opt-in overlay that turns on real structure-based docking.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.docking.yml up --build
+#   curl localhost:8000/health          # -> backends.docking: "autodock-vina (vina)"
+#
+# Rebuilds the api + worker from the Vina/OpenBabel image and flips the adapter on
+# (GLOWSKY_DOCKING_BACKEND=vina). Left out of the default stack so plain `docker compose
+# up` stays on the lean, native image with docking honestly "not configured".
+#
+# Prepare a receptor once, then dock against the bundled 1HSG sample:
+#   docker compose -f docker-compose.yml -f docker-compose.docking.yml run --rm api \
+#     obabel /receptors/1hsg_receptor.pdb -O /receptors/1hsg_receptor.pdbqt -xr
+#   curl -s localhost:8000/tools/dock -H 'content-type: application/json' -d '{"args":{
+#     "ligand_smiles":"CC(C)(C)NC(=O)C1CC2CCCCC2CN1Cc1cccnc1",
+#     "receptor_ref":"/receptors/1hsg_receptor.pdbqt",
+#     "center":[13.1,22.5,5.6],"size":[22,22,22]}}'
+services:
+  api:
+    build:
+      dockerfile: infra/docker/docking.Dockerfile
+    platform: linux/amd64
+    environment:
+      GLOWSKY_DOCKING_BACKEND: vina
+    volumes:
+      - ./examples/docking:/receptors
+
+  worker:
+    build:
+      dockerfile: infra/docker/docking.Dockerfile
+    platform: linux/amd64
+    environment:
+      GLOWSKY_DOCKING_BACKEND: vina
+    volumes:
+      - ./examples/docking:/receptors

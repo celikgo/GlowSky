@@ -141,3 +141,24 @@ def test_vina_raises_not_configured_when_binary_missing():
     be = VinaDockingBackend(vina_bin="vina-does-not-exist", obabel_bin="obabel-nope")
     with pytest.raises(BackendNotConfigured):
         be.dock("c1ccccc1", "missing-receptor.pdbqt", Pocket((0, 0, 0), (10, 10, 10)))
+
+
+def test_configure_backends_wires_vina_from_settings():
+    # The docker-compose.docking.yml overlay sets GLOWSKY_DOCKING_BACKEND=vina; this is the
+    # wiring that turns that env into a live VinaDockingBackend on the dock tool seam.
+    from types import SimpleNamespace
+
+    from services.chemistry.adapters import docking
+    from services.chemistry.adapters.vina import VinaDockingBackend
+    from services.chemistry.adapters.wiring import configure_backends
+
+    settings = SimpleNamespace(
+        admet_backend="none", docking_backend="vina", vina_bin="vina", obabel_bin="obabel"
+    )
+    original = docking._backend
+    try:
+        summary = configure_backends(settings)
+        assert summary["docking"] == "autodock-vina (vina)"
+        assert isinstance(docking._backend, VinaDockingBackend)
+    finally:
+        docking.set_backend(original)

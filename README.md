@@ -130,6 +130,30 @@ result with image-pinned provenance.
 > The socket mount is root-equivalent on the host — fine for local dev; production
 > should use a rootless/sysbox/gVisor builder or a dedicated tool-runner service.
 
+### Run with real docking (AutoDock Vina + OpenBabel)
+
+Docking is adapter-gated and off by default. An opt-in overlay rebuilds the api + worker
+on a Vina/OpenBabel image and flips `GLOWSKY_DOCKING_BACKEND=vina`:
+
+```bash
+make up-docking            # docker compose -f docker-compose.yml -f docker-compose.docking.yml up --build
+curl localhost:8000/health # -> backends.docking: "autodock-vina (vina)"
+```
+
+The image is pinned to `linux/amd64` (Vina ships x86_64 binaries only, so it runs under
+emulation on Apple Silicon). `./examples/docking` mounts at `/receptors`. Prepare the
+bundled 1HSG receptor once, then dock indinavir into its pocket (center derived from the
+crystal ligand, `13.1, 22.5, 5.6`):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.docking.yml run --rm api \
+  obabel /receptors/1hsg_receptor.pdb -O /receptors/1hsg_receptor.pdbqt -xr
+curl -s localhost:8000/tools/dock -H 'content-type: application/json' -d '{"args":{
+  "ligand_smiles":"CC(C)(C)NC(=O)C1CC2CCCCC2CN1Cc1cccnc1",
+  "receptor_ref":"/receptors/1hsg_receptor.pdbqt",
+  "center":[13.1,22.5,5.6],"size":[22,22,22]}}'   # -> real affinities + per-pose .pdbqt geometry
+```
+
 ### What's implemented in Phase 0
 | Area | Module | Notes |
 |---|---|---|
@@ -138,7 +162,7 @@ result with image-pinned provenance.
 | **Tool execution subsystem** | `services/tools/` | The scalable seam (docs/13): versioned `ToolSpec` contract, registry, `ToolExecutionService` (cache + firewall + provenance + compute-class routing) |
 | **Slow path + streaming** | `services/tools/queue/`, `store.py` | Celery tasks for heavy/batch tools; append-only `JobStore` (in-memory eager **or** Redis); `POST /jobs`, `/jobs/batch`, `GET /jobs/{id}`, and **`WS /jobs/{id}/stream`** relaying queued→running→item→completed live |
 | **Container-tool runtime** | `services/tools/runtimes/container.py`, `manifest.py`, `examples/tools/` | Bring-your-own model as a sandboxed Docker tool: JSON-stdin/stdout ABI, `glowsky-tool.yaml` manifests, strict isolation. Registered like any built-in (cache/firewall/provenance) |
-| **Docker deployment** | `docker-compose.yml`, `infra/docker/` | Redis + API + worker on one image; worker mounts the Docker socket to launch sandboxed tool containers |
+| **Docker deployment** | `docker-compose.yml`, `docker-compose.docking.yml`, `infra/docker/` | Redis + API + worker on one image; worker mounts the Docker socket to launch sandboxed tool containers. An opt-in `docking.Dockerfile` overlay adds a real AutoDock Vina + OpenBabel toolchain (`make up-docking`) |
 | **BYO-LLM gateway** | `services/llm_gateway/` | LiteLLM-backed multi-provider access + offline mock; task-class routing; keys resolved only at call time, never logged |
 | **Agent orchestrator** | `services/agent/orchestrator.py` | Plan (LLM) → generate → profile → filter → rank → synthesize (LLM); every chemistry call routes through the execution service, with a full provenance trace |
 | **API + persistence** | `apps/api/` + `services/core/` | FastAPI endpoints incl. generic `POST /tools/{name}`; runs + molecules stored with provenance (`origin_run_id`) in SQLite |

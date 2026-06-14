@@ -45,7 +45,8 @@ src/
   lib/rdkit.ts  lazy single-flight loader for the RDKit-JS WASM module
   hooks/useRDKit.ts   React hook exposing the RDKit module when ready
   components/    Sidebar, TopBar (health pill), MoleculeStructure (RDKit 2D SVG)
-  screens/       DesignScreen (the agentic design loop), MoleculeCard, Placeholder
+  screens/       DesignScreen (agentic loop), LibraryScreen (projects + I/O),
+                 MoleculeCard, LibraryMoleculeCard, Placeholder
 src-tauri/      the Rust shell (window config, icons, capabilities)
 ```
 
@@ -55,7 +56,13 @@ The **Design** screen drives the backend's agentic design loop end-to-end: enter
 natural-language goal + a seed SMILES, run it, and see the plan, candidate molecules
 with **2D structure depictions** (rendered client-side by RDKit-JS), property chips,
 pass/fail, the agent's explanation, and the execution trace — plus one-click
-notebook/report export of the run. Library / Tools / Settings are placeholders whose
+notebook/report export of the run.
+
+The **Library** screen manages projects and libraries against the I/O endpoints: pick or
+create a project, create libraries, **import** molecules by pasting SMILES / CSV / SDF
+(firewalled + InChIKey-deduped server-side; invalid rows reported, not fatal), browse them
+as cards with 2D structures and property chips (imported CSV columns included), and
+**export** the set as SMILES / CSV / SDF. Tools / Settings remain placeholders whose
 backend seams already exist.
 
 ### 2D structure rendering (RDKit-JS, offline)

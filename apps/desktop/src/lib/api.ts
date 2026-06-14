@@ -74,11 +74,76 @@ export interface DesignResult {
   models_used: Record<string, string>;
 }
 
+// --- libraries & I/O ---------------------------------------------------------
+
+export interface Project {
+  id: string;
+  org_id: string;
+  name: string;
+  description: string | null;
+  target_profile: Record<string, unknown>;
+  created_by: string | null;
+}
+
+export interface Library {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  kind: string;
+  molecule_count: number;
+}
+
+export interface LibraryMolecule {
+  id: string;
+  name: string | null;
+  canonical_smiles: string;
+  inchikey: string;
+  properties: Record<string, number | boolean | string>;
+  source: string;
+}
+
+export interface LibraryDetail {
+  library: Library;
+  molecules: LibraryMolecule[];
+}
+
+export interface ImportResult {
+  imported: number;
+  duplicates: number;
+  invalid: { input: string; error: string }[];
+  invalid_count: number;
+}
+
+export type IoFormat = "smiles" | "csv" | "sdf";
+
 // --- endpoints ---------------------------------------------------------------
 
 export const api = {
   base: BASE,
   health: () => request<Health>("/health"),
+
+  // projects
+  listProjects: () => request<Project[]>("/projects"),
+  createProject: (name: string) =>
+    request<Project>("/projects", { method: "POST", body: JSON.stringify({ name }) }),
+
+  // libraries
+  listLibraries: (projectId: string) =>
+    request<Library[]>(`/projects/${projectId}/libraries`),
+  createLibrary: (projectId: string, name: string) =>
+    request<Library>(`/projects/${projectId}/libraries`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  getLibrary: (libraryId: string) => request<LibraryDetail>(`/libraries/${libraryId}`),
+  importMolecules: (libraryId: string, format: IoFormat, content: string) =>
+    request<ImportResult>(`/libraries/${libraryId}/import`, {
+      method: "POST",
+      body: JSON.stringify({ format, content }),
+    }),
+  exportLibraryUrl: (libraryId: string, format: IoFormat) =>
+    `${BASE}/libraries/${libraryId}/export?format=${format}`,
   design: (goal: string, seed_smiles: string) =>
     request<DesignResult>("/agent/design", {
       method: "POST",

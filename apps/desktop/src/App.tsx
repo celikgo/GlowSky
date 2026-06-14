@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Sidebar, type NavKey } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { DesignScreen } from "./screens/DesignScreen";
+import { LibraryScreen } from "./screens/LibraryScreen";
 import { Placeholder } from "./screens/Placeholder";
 import "./App.css";
 
@@ -23,6 +24,8 @@ export default function App() {
         <div className="app__content">
           {nav === "design" ? (
             <DesignScreen />
+          ) : nav === "library" ? (
+            <LibraryScreen />
           ) : (
             <Placeholder
               title={TITLES[nav]}

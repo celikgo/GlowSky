@@ -1,0 +1,31 @@
+# Real ADMET predictor, plugged in as a sandboxed container tool — no Glowsky code change.
+# Drop under GLOWSKY_TOOLS_DIR and `admet_ai` becomes an agent-callable tool with the
+# same cache/firewall/provenance as built-ins.
+name: admet_ai
+version: "0.1.0"
+category: property
+summary: >
+  ADMET prediction via ADMET-AI (pretrained Chemprop-RDKit GNN over ~40 TDC endpoints:
+  solubility, hERG, CYP, Caco-2, BBB, bioavailability, clearance, half-life, …).
+image: glowsky-tool-admet-ai:0.1.0
+
+compute_class: cpu_heavy      # CPU torch inference (GPU optional, faster)
+latency_class: long
+determinism: deterministic
+emits_structures: false
+egress: none                  # weights baked at build -> no network needed at runtime
+
+input_schema:
+  type: object
+  properties:
+    canonical_smiles: { type: string }
+    endpoints:
+      type: array
+      items: { type: string }
+      description: optional substring filters, e.g. ["Solubility","hERG","CYP2D6"]
+  required: [canonical_smiles]
+
+resources:
+  cpu: 2.0
+  mem_mb: 4096
+  timeout_s: 300

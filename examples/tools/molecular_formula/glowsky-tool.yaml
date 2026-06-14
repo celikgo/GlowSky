@@ -1,0 +1,25 @@
+# A researcher-contributed container tool. Drop this dir under GLOWSKY_TOOLS_DIR and
+# Glowsky registers `molecular_formula` as an agent-callable tool — sandboxed, with
+# the same cache/firewall/provenance as built-in tools.
+name: molecular_formula
+version: "0.1.0"
+category: property
+summary: Molecular formula and exact mass (example RDKit container tool).
+image: glowsky-tool-molecular-formula:0.1.0
+
+compute_class: cpu_heavy
+latency_class: short
+determinism: deterministic
+emits_structures: false
+egress: none
+
+input_schema:
+  type: object
+  properties:
+    canonical_smiles: { type: string }
+  required: [canonical_smiles]
+
+resources:
+  cpu: 1.0
+  mem_mb: 1024
+  timeout_s: 60

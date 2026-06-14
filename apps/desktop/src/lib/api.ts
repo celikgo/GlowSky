@@ -118,6 +118,14 @@ export interface ImportResult {
 
 export type IoFormat = "smiles" | "csv" | "sdf";
 
+export interface Conformer {
+  canonical_smiles: string;
+  inchikey: string;
+  molblock: string;
+  energy_kcal_mol: number | null;
+  seed: number;
+}
+
 // --- tools -------------------------------------------------------------------
 
 export interface JsonSchemaProp {
@@ -250,6 +258,11 @@ export const api = {
       "/molecules/profile",
       { method: "POST", body: JSON.stringify({ smiles }) },
     ),
+  conformer: (smiles: string) =>
+    request<Conformer>("/molecules/conformer", {
+      method: "POST",
+      body: JSON.stringify({ smiles }),
+    }),
   exportRunUrl: (runId: string, format: "ipynb" | "md") =>
     `${BASE}/runs/${runId}/export?format=${format}`,
 };

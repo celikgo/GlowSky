@@ -65,6 +65,7 @@ from services.agent.orchestrator import DesignOrchestrator
 from services.chemistry.adapters import BackendNotConfigured
 from services.chemistry.adapters.wiring import configure_backends
 from services.chemistry import io as chem_io
+from services.chemistry.conformers import conformer_molblock
 from services.chemistry.properties import profile
 from services.chemistry.validation import validate_and_canonicalize
 from services.reporting import build_markdown, notebook_json
@@ -731,6 +732,27 @@ def profile_molecule(req: ProfileRequest) -> dict:
         "canonical_smiles": result.canonical_smiles,
         "inchikey": result.inchikey,
         "properties": profile(result.canonical_smiles),
+    }
+
+
+@app.post("/molecules/conformer")
+def molecule_conformer(req: ProfileRequest) -> dict:
+    """Embed a single low-energy 3D conformer for the desktop 3D viewer.
+
+    Firewalls the SMILES first (same path as profile), then returns an MDL MOL block
+    with 3D coordinates plus its MMFF energy.
+    """
+    result = validate_and_canonicalize(req.smiles)
+    if not result.valid:
+        raise HTTPException(status_code=422, detail=f"invalid molecule: {result.error}")
+    try:
+        conformer = conformer_molblock(result.canonical_smiles)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "canonical_smiles": result.canonical_smiles,
+        "inchikey": result.inchikey,
+        **conformer,
     }
 
 

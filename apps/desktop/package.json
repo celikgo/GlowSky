@@ -16,6 +16,7 @@
     "desktop:build": "tauri build"
   },
   "dependencies": {
+    "3dmol": "^2.5.5",
     "@rdkit/rdkit": "2025.3.4-1.0.0",
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-opener": "^2.2.2",

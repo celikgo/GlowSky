@@ -1,5 +1,5 @@
 import type { LibraryMolecule } from "../lib/api";
-import { MoleculeStructure } from "../components/MoleculeStructure";
+import { MoleculeDepiction } from "../components/MoleculeDepiction";
 
 function fmt(v: number | boolean | string | undefined): string | null {
   if (v === undefined || v === null || v === "") return null;
@@ -23,7 +23,7 @@ export function LibraryMoleculeCard({ mol }: { mol: LibraryMolecule }) {
         <span className="molcard__mod">{mol.name || "untitled"}</span>
         <span className="chip">{mol.source}</span>
       </div>
-      <MoleculeStructure smiles={mol.canonical_smiles} />
+      <MoleculeDepiction smiles={mol.canonical_smiles} />
       <div className="molcard__smiles mono">{mol.canonical_smiles}</div>
       {promoted.length || extras.length ? (
         <div className="molcard__props">

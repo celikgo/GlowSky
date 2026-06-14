@@ -1,5 +1,5 @@
 import type { Candidate } from "../lib/api";
-import { MoleculeStructure } from "../components/MoleculeStructure";
+import { MoleculeDepiction } from "../components/MoleculeDepiction";
 
 function num(v: number | boolean | undefined): string {
   return typeof v === "number" ? v.toString() : "—";
@@ -15,7 +15,7 @@ export function MoleculeCard({ candidate }: { candidate: Candidate }) {
           {candidate.passed_filters ? "passed" : "filtered"}
         </span>
       </div>
-      <MoleculeStructure smiles={candidate.smiles} />
+      <MoleculeDepiction smiles={candidate.smiles} />
       <div className="molcard__smiles mono">{candidate.smiles}</div>
       <div className="molcard__props">
         <span className="chip">MW {num(p.mw)}</span>

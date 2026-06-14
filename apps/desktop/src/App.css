@@ -258,6 +258,85 @@
   font-size: 13px;
 }
 
+/* 2D/3D depiction toggle wrapper */
+.moldepict {
+  position: relative;
+}
+.moldepict__toggle {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: flex;
+  gap: 1px;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.moldepict__btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.moldepict__btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.moldepict__btn.is-active {
+  color: var(--text-on-accent);
+  background: var(--accent);
+}
+
+/* 3D viewer (3Dmol.js WebGL canvas) */
+.mol3d {
+  position: relative;
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.mol3d__canvas {
+  position: relative;
+}
+.mol3d__canvas canvas {
+  display: block;
+  border-radius: var(--radius);
+}
+.mol3d__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  background: var(--bg-elevated);
+}
+.mol3d__overlay--error {
+  color: var(--danger, #f4212e);
+  padding: 0 12px;
+  text-align: center;
+}
+.mol3d__energy {
+  position: absolute;
+  bottom: 6px;
+  left: 8px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius);
+  padding: 1px 6px;
+}
+
 .molcard__smiles {
   color: var(--text-secondary);
   word-break: break-all;

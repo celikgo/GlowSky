@@ -148,12 +148,12 @@ result with image-pinned provenance.
 | **Migrations** *(Phase 1)* | `migrations/`, `tests/test_migrations.py` | Alembic as schema source of truth; a drift-guard test fails if models and migrations diverge |
 | **Run export** *(Phase 1)* | `services/reporting/`, `GET /runs/{id}/export` | Export a design run as a **reproducible Jupyter notebook** (self-contained RDKit code that recomputes descriptors + re-applies the filters — verified to execute) or a **Markdown report**; both built from stored provenance, tenant-scoped |
 | **BYO-LLM key management** *(Phase 1)* | `services/core/crypto.py`, `services/llm_gateway/credentials.py`, `apps/api/main.py` | Per-org provider credentials **encrypted at rest** (Fernet; only a masked hint is ever returned) and per-org model-route overrides; the gateway resolves an org's stored keys/routes ahead of env defaults (then the offline mock). Endpoints under `/settings/*`, tenant-scoped |
-| **Desktop app** *(Phase 1)* | `apps/desktop/` | **Tauri 2 + React + Vite + TS** desktop client themed in the Twitter **Dim** palette. Design (agentic loop with **RDKit-JS 2D rendering**, notebook/report export), Library (projects + SMILES/CSV/SDF I/O), Tools (schema-driven registry playground), and Settings (BYO-LLM keys + model routing). See `apps/desktop/README.md` |
+| **Desktop app** *(Phase 1)* | `apps/desktop/` | **Tauri 2 + React + Vite + TS** desktop client themed in the Twitter **Dim** palette. Design (agentic loop with **RDKit-JS 2D rendering** + an interactive **3Dmol.js conformer viewer** behind a per-card 2D/3D toggle, notebook/report export), Library (projects + SMILES/CSV/SDF I/O), Tools (schema-driven registry playground), and Settings (BYO-LLM keys + model routing). See `apps/desktop/README.md` |
 
 Layout follows `docs/11-folder-structure.md` + `docs/13-chemistry-tools-architecture.md`.
 Phase 1 (in progress) adds the auth/tenancy spine (done — see below), and next wires the
 slow-path Celery/Redis queue, real ADMET/docking backends, WebSocket streaming polish,
-2D/3D viewers, and notebook export.
+2D/3D viewers (RDKit-JS 2D + an interactive 3Dmol.js conformer viewer — done), and notebook export.
 
 **Auth & multi-tenancy (Phase 1).** Off by default — every request resolves to a built-in
 local owner, so the Phase 0 commands above need no token. Flip `GLOWSKY_AUTH_ENABLED=true`

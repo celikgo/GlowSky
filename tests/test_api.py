@@ -28,6 +28,25 @@ def test_validate_and_profile_endpoints():
         assert bad.status_code == 422
 
 
+def test_conformer_endpoint_returns_3d_molblock():
+    with TestClient(app) as client:
+        r = client.post("/molecules/conformer", json={"smiles": "CC(=O)Oc1ccccc1C(=O)O"})
+        assert r.status_code == 200
+        body = r.json()
+        molblock = body["molblock"]
+        assert "V2000" in molblock
+        assert isinstance(body["energy_kcal_mol"], float)
+        # The conformer must carry real 3D coords — at least one non-zero z column.
+        atom_lines = [
+            ln.split() for ln in molblock.splitlines()
+            if len(ln.split()) > 3 and ln.split()[3].isalpha()
+        ]
+        assert any(abs(float(cols[2])) > 1e-6 for cols in atom_lines)
+
+        bad = client.post("/molecules/conformer", json={"smiles": "garbage(("})
+        assert bad.status_code == 422
+
+
 def test_design_endpoint_persists_and_returns_provenance():
     with TestClient(app) as client:
         r = client.post(

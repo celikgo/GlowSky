@@ -6,7 +6,7 @@ from fastapi import Depends, Header, HTTPException
 from services.core.auth import DEV_PRINCIPAL, Principal, resolve_token
 from services.core.config import get_settings
 from services.core.db import session_scope
-from services.core.models import Library, Project
+from services.core.models import AgentRun, Library, Project
 
 
 def current_principal(authorization: str | None = Header(default=None)) -> Principal:
@@ -53,3 +53,11 @@ def load_library(session, library_id: str, principal: Principal) -> Library:
     if library is None or library.org_id != principal.org_id:
         raise HTTPException(status_code=404, detail=f"unknown library: {library_id}")
     return library
+
+
+def load_run(session, run_id: str, principal: Principal) -> AgentRun:
+    """Fetch an agent run enforcing tenant isolation (404 across orgs)."""
+    run = session.get(AgentRun, run_id)
+    if run is None or run.org_id != principal.org_id:
+        raise HTTPException(status_code=404, detail=f"unknown run: {run_id}")
+    return run

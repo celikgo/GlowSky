@@ -2,7 +2,7 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-77%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-83%20passing-brightgreen.svg)](tests/)
 [![Status: Phase 0](https://img.shields.io/badge/status-Phase%200%20scaffold-orange.svg)](docs/09-roadmap.md)
 [![Code style: RDKit](https://img.shields.io/badge/chemistry-RDKit-26a69a.svg)](https://www.rdkit.org/)
 
@@ -49,7 +49,7 @@ Phase 0 proves the two hardest integrations end-to-end: the **BYO-LLM gateway** 
 
 ```bash
 make venv && make install     # create .venv313 + install (editable)
-make test                     # 77 tests: firewall, tools, slow-path + streaming, container runtime, gateway, agent loop, API, auth/tenancy, migrations, ADMET/docking backends, library I/O
+make test                     # 83 tests: firewall, tools, slow-path + streaming, container runtime, gateway, agent loop, API, auth/tenancy, migrations, ADMET/docking backends, library I/O, run export
 make demo                     # run a sample design loop, print results + provenance
 make run                      # start the API at http://localhost:8000  (/docs for Swagger)
 ```
@@ -146,6 +146,7 @@ result with image-pinned provenance.
 | **Real ADMET/docking backends** *(Phase 1)* | `services/chemistry/adapters/admet_rdkit.py`, `adapters/vina.py` | Offline **RDKit-QSPR** ADMET (ESOL solubility + BBB rule + lipophilicity heuristics, every value carries method/confidence/applicability-domain) and an **AutoDock Vina** docking wrapper — both adapter-gated (`GLOWSKY_ADMET_BACKEND`, `GLOWSKY_DOCKING_BACKEND`); the default stays "not configured" so nothing is ever fabricated |
 | **Library + SMILES/CSV/SDF I/O** *(Phase 1)* | `services/chemistry/io.py`, `apps/api/main.py` | Tenant-scoped libraries; import/export in SMILES/CSV/SDF (every structure firewalled, InChIKey-deduped, bad rows reported not fatal); molecule diff with per-descriptor deltas |
 | **Migrations** *(Phase 1)* | `migrations/`, `tests/test_migrations.py` | Alembic as schema source of truth; a drift-guard test fails if models and migrations diverge |
+| **Run export** *(Phase 1)* | `services/reporting/`, `GET /runs/{id}/export` | Export a design run as a **reproducible Jupyter notebook** (self-contained RDKit code that recomputes descriptors + re-applies the filters — verified to execute) or a **Markdown report**; both built from stored provenance, tenant-scoped |
 
 Layout follows `docs/11-folder-structure.md` + `docs/13-chemistry-tools-architecture.md`.
 Phase 1 (in progress) adds the auth/tenancy spine (done — see below), and next wires the

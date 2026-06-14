@@ -32,7 +32,13 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, select
 
-from apps.api.deps import current_principal, load_library, load_project, require_write
+from apps.api.deps import (
+    current_principal,
+    load_library,
+    load_project,
+    load_run,
+    require_write,
+)
 from apps.api.schemas import (
     BatchSubmitRequest,
     DesignRequest,
@@ -56,6 +62,7 @@ from services.chemistry.adapters.wiring import configure_backends
 from services.chemistry import io as chem_io
 from services.chemistry.properties import profile
 from services.chemistry.validation import validate_and_canonicalize
+from services.reporting import build_markdown, notebook_json
 from services.core.auth import Principal, audit, signup
 from services.core.db import init_db, session_scope
 from services.core.models import AgentRun, Library, LibraryMembership, Molecule, Project
@@ -351,6 +358,61 @@ def molecule_diff(req: DiffRequest) -> dict:
         return chem_io.diff_molecules(req.smiles_a, req.smiles_b)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# --- Run export: reproducible notebook / Markdown report -----------------------
+
+def _run_dict(run: AgentRun) -> dict:
+    return {
+        "id": run.id, "goal_text": run.goal_text, "status": run.status,
+        "plan": run.plan, "trace": run.trace, "models_used": run.models_used,
+        "explanation": run.explanation,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+    }
+
+
+def _run_molecule_dicts(s, run_id: str) -> list[dict]:
+    rows = s.scalars(
+        select(Molecule).where(Molecule.origin_run_id == run_id)
+        .order_by(Molecule.created_at)
+    ).all()
+    return [
+        {"name": m.name, "canonical_smiles": m.canonical_smiles, "inchikey": m.inchikey,
+         "properties": m.properties or {}, "source": m.source}
+        for m in rows
+    ]
+
+
+@app.get("/runs/{run_id}")
+def get_run(run_id: str, principal: Principal = Depends(current_principal)) -> dict:
+    with session_scope() as s:
+        run = load_run(s, run_id, principal)
+        return {"run": _run_dict(run), "molecules": _run_molecule_dicts(s, run_id)}
+
+
+@app.get("/runs/{run_id}/export")
+def export_run(
+    run_id: str, format: str = "ipynb", principal: Principal = Depends(current_principal)
+) -> PlainTextResponse:
+    """Export a run as a reproducible Jupyter notebook (ipynb) or a Markdown report (md)."""
+    fmt = format.lower()
+    if fmt not in {"ipynb", "md"}:
+        raise HTTPException(status_code=422, detail="format must be 'ipynb' or 'md'")
+    with session_scope() as s:
+        run = load_run(s, run_id, principal)
+        run_d = _run_dict(run)
+        mols = _run_molecule_dicts(s, run_id)
+
+    if fmt == "ipynb":
+        body = notebook_json(run_d, mols)
+        media, ext = "application/x-ipynb+json", "ipynb"
+    else:
+        body = build_markdown(run_d, mols)
+        media, ext = "text/markdown", "md"
+    return PlainTextResponse(
+        body, media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="run-{run_id}.{ext}"'},
+    )
 
 
 @app.get("/tools")

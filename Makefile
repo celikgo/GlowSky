@@ -1,7 +1,8 @@
 PY ?= .venv313/bin/python
 PIP ?= .venv313/bin/pip
+ALEMBIC ?= $(PY) -m alembic
 
-.PHONY: venv install test run demo clean
+.PHONY: venv install test run demo clean migrate migration migrate-down migrate-history
 
 venv:                ## Create the Python 3.13 virtualenv (RDKit-compatible)
 	/opt/homebrew/bin/python3.13 -m venv .venv313
@@ -32,6 +33,18 @@ up:                  ## Build + run the full stack (redis + api + worker)
 
 down:                ## Stop the stack
 	docker compose down
+
+migrate:             ## Apply all pending migrations (alembic upgrade head)
+	$(ALEMBIC) upgrade head
+
+migration:           ## Autogenerate a migration from model changes: make migration m="add foo"
+	$(ALEMBIC) revision --autogenerate -m "$(m)"
+
+migrate-down:        ## Roll back the most recent migration
+	$(ALEMBIC) downgrade -1
+
+migrate-history:     ## Show migration history + current revision
+	$(ALEMBIC) history --verbose && $(ALEMBIC) current
 
 demo:                ## Run a sample design loop and print the result
 	$(PY) -m scripts.demo

@@ -2,7 +2,7 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-54%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-56%20passing-brightgreen.svg)](tests/)
 [![Status: Phase 0](https://img.shields.io/badge/status-Phase%200%20scaffold-orange.svg)](docs/09-roadmap.md)
 [![Code style: RDKit](https://img.shields.io/badge/chemistry-RDKit-26a69a.svg)](https://www.rdkit.org/)
 
@@ -49,7 +49,7 @@ Phase 0 proves the two hardest integrations end-to-end: the **BYO-LLM gateway** 
 
 ```bash
 make venv && make install     # create .venv313 + install (editable)
-make test                     # 54 tests: firewall, tools subsystem, slow-path + streaming, container runtime, gateway, agent loop, API, auth/tenancy
+make test                     # 56 tests: firewall, tools subsystem, slow-path + streaming, container runtime, gateway, agent loop, API, auth/tenancy, migrations
 make demo                     # run a sample design loop, print results + provenance
 make run                      # start the API at http://localhost:8000  (/docs for Swagger)
 ```
@@ -171,8 +171,22 @@ curl -s localhost:8000/projects/$PID/runs -H "authorization: Bearer $KEY"   # pr
 
 > Bearer API keys are the Phase 1 auth primitive (fully testable headlessly). Email/OAuth
 > (Google/GitHub/ORCID) sign-in arrives with the frontend; the org/membership model is
-> already in place for it. Schema evolution currently uses `create_all`; Alembic migrations
-> are the next follow-up.
+> already in place for it.
+
+**Database migrations (Alembic).** SQLite dev/test bootstraps tables via `create_all`,
+but **Alembic is the source of truth** for schema evolution — required for Postgres /
+production. The baseline migration is kept honest by a test that applies all migrations
+to a throwaway DB and diffs the result against the models.
+
+```bash
+make migrate                      # alembic upgrade head (apply pending migrations)
+make migration m="add libraries"  # autogenerate a migration from model changes
+make migrate-history              # history + current revision
+```
+
+> After changing any model in `services/core/models.py`, run `make migration m="..."`,
+> review the generated file under `migrations/versions/`, and commit it. The
+> `tests/test_migrations.py` drift guard fails CI if models and migrations diverge.
 
 ---
 

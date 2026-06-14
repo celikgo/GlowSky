@@ -216,7 +216,8 @@
   font-weight: 700;
 }
 .molstruct {
-  background: #ffffff;
+  /* Faint inset panel; the depiction itself is transparent with light bonds. */
+  background: var(--bg);
   border-radius: var(--radius);
   border: 1px solid var(--border);
   display: flex;

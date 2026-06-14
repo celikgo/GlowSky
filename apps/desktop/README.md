@@ -65,6 +65,9 @@ no server round-trip, no CDN. `scripts/copy-rdkit.mjs` stages the loader + `.was
 (~6.9 MB) into `public/` on install / before dev / before build; the module loads lazily
 and instantiates once (`src/lib/rdkit.ts`), so the app bundle stays ~150 KB. Each
 `MoleculeStructure` validates the SMILES and frees the WASM-side molecule after drawing.
+Depictions are drawn for **dark mode** — a transparent background with a light atom
+palette (light carbon → light bonds, lightened heteroatoms) so they read on the Dim
+surface (`DARK_DRAW_OPTIONS` in `MoleculeStructure.tsx`).
 
 ## Troubleshooting
 

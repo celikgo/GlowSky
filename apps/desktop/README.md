@@ -46,8 +46,8 @@ src/
   hooks/useRDKit.ts   React hook exposing the RDKit module when ready
   components/    Sidebar, TopBar (health pill), MoleculeStructure (RDKit 2D SVG)
   screens/       DesignScreen (agentic loop), LibraryScreen (projects + I/O),
-                 ToolsScreen (registry playground), MoleculeCard,
-                 LibraryMoleculeCard, Placeholder
+                 ToolsScreen (registry playground), SettingsScreen (BYO-LLM),
+                 MoleculeCard, LibraryMoleculeCard
 src-tauri/      the Rust shell (window config, icons, capabilities)
 ```
 
@@ -70,8 +70,13 @@ the 15 built-in tools grouped by category, pick one to get a **form generated fr
 JSON-schema parameters** (string / number / array inputs, with sensible prefills), run it
 (`POST /tools/{name}`, optional seed), and see the provenance (compute class, duration,
 cache hit, determinism), any structures in the output rendered 2D, and the raw JSON.
-Adapter-gated tools (ADMET/docking) surface their "not configured" error cleanly. Settings
-remains a placeholder whose backend seam already exists.
+Adapter-gated tools (ADMET/docking) surface their "not configured" error cleanly.
+
+The **Settings** screen manages BYO-LLM: connect provider keys (Anthropic / OpenAI / Groq /
+local) — encrypted server-side, shown only as a masked hint and removable — and set the
+"provider/model" route for each task class (reasoning / fast-triage / codegen), with an
+override/default badge and one-click revert. Stored keys/routes drive the per-org gateway
+in the design loop.
 
 ### 2D structure rendering (RDKit-JS, offline)
 

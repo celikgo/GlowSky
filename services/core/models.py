@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # Built-in single-tenant identifiers used when GLOWSKY_AUTH_ENABLED is False.
@@ -119,6 +119,41 @@ class LibraryMembership(Base):
     molecule_id: Mapped[str] = mapped_column(ForeignKey("molecules.id"), index=True)
     added_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), default=None)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class LLMProviderCredential(Base):
+    """A BYO-LLM provider key, encrypted at rest (docs/06). One row per (org, provider);
+    the row stores only ciphertext + a masked hint — plaintext is never persisted."""
+
+    __tablename__ = "llm_provider_credentials"
+    __table_args__ = (UniqueConstraint("org_id", "provider", name="uq_org_provider"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), index=True)
+    provider: Mapped[str] = mapped_column(String)  # anthropic|openai|groq|local|...
+    encrypted_secret: Mapped[str] = mapped_column(Text)  # Fernet ciphertext
+    hint: Mapped[str] = mapped_column(String)  # masked, safe to show (e.g. "sk-…AB12")
+    base_url: Mapped[str | None] = mapped_column(String, default=None)  # for local/compatible
+    label: Mapped[str | None] = mapped_column(String, default=None)
+    status: Mapped[str] = mapped_column(String, default="active")
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ModelRouteOverride(Base):
+    """Per-org task-class -> 'provider/model' override (docs/06 ModelRoute). One per
+    (org, task_class); absence means fall back to the env-configured default."""
+
+    __tablename__ = "model_route_overrides"
+    __table_args__ = (UniqueConstraint("org_id", "task_class", name="uq_org_taskclass"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), index=True)
+    task_class: Mapped[str] = mapped_column(String)  # reasoning|fast_triage|codegen
+    provider: Mapped[str] = mapped_column(String)
+    model: Mapped[str] = mapped_column(String)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class AuditEvent(Base):

@@ -41,6 +41,8 @@ from apps.api.deps import (
 )
 from apps.api.schemas import (
     BatchSubmitRequest,
+    CredentialCreate,
+    CredentialResponse,
     DesignRequest,
     DiffRequest,
     ImportRequest,
@@ -51,6 +53,8 @@ from apps.api.schemas import (
     ProfileRequest,
     ProjectCreate,
     ProjectResponse,
+    RouteResponse,
+    RouteUpsert,
     SignupRequest,
     SignupResponse,
     ToolExecuteRequest,
@@ -64,8 +68,18 @@ from services.chemistry.properties import profile
 from services.chemistry.validation import validate_and_canonicalize
 from services.reporting import build_markdown, notebook_json
 from services.core.auth import Principal, audit, signup
+from services.core.config import get_settings
+from services.core.crypto import encrypt, mask
 from services.core.db import init_db, session_scope
-from services.core.models import AgentRun, Library, LibraryMembership, Molecule, Project
+from services.core.models import (
+    AgentRun,
+    Library,
+    LibraryMembership,
+    LLMProviderCredential,
+    ModelRouteOverride,
+    Molecule,
+    Project,
+)
 from services.llm_gateway.gateway import LLMGateway
 from services.llm_gateway.types import TaskClass
 from services.tools.catalog import build_registry
@@ -446,6 +460,165 @@ def export_run(
     )
 
 
+# --- Settings: BYO-LLM credentials & model routing -----------------------------
+
+SUPPORTED_PROVIDERS = [
+    {"id": "anthropic", "label": "Anthropic", "needs_base_url": False},
+    {"id": "openai", "label": "OpenAI", "needs_base_url": False},
+    {"id": "groq", "label": "Groq", "needs_base_url": False},
+    {"id": "local", "label": "Local / OpenAI-compatible", "needs_base_url": True},
+]
+_PROVIDER_IDS = {p["id"] for p in SUPPORTED_PROVIDERS}
+_TASK_CLASSES = ("reasoning", "fast_triage", "codegen")
+
+
+def _cred_response(c: LLMProviderCredential) -> CredentialResponse:
+    return CredentialResponse(
+        id=c.id, provider=c.provider, hint=c.hint, base_url=c.base_url,
+        label=c.label, status=c.status, created_at=c.created_at.isoformat(),
+    )
+
+
+@app.get("/settings/providers")
+def settings_providers() -> dict:
+    """The providers the UI can offer to connect (static catalog)."""
+    return {"providers": SUPPORTED_PROVIDERS}
+
+
+@app.get("/settings/credentials", response_model=list[CredentialResponse])
+def list_credentials(
+    principal: Principal = Depends(current_principal),
+) -> list[CredentialResponse]:
+    """List the org's stored provider credentials — metadata + masked hint only."""
+    with session_scope() as s:
+        rows = s.scalars(
+            select(LLMProviderCredential)
+            .where(LLMProviderCredential.org_id == principal.org_id)
+            .order_by(LLMProviderCredential.provider)
+        ).all()
+        return [_cred_response(c) for c in rows]
+
+
+@app.post("/settings/credentials", response_model=CredentialResponse, status_code=201)
+def add_credential(
+    req: CredentialCreate, principal: Principal = Depends(require_write)
+) -> CredentialResponse:
+    """Store (or replace) a provider key. The key is encrypted at rest; only a masked
+    hint is ever returned. One credential per (org, provider)."""
+    provider = req.provider.strip().lower()
+    if provider not in _PROVIDER_IDS:
+        raise HTTPException(status_code=422,
+                            detail=f"unsupported provider; one of {sorted(_PROVIDER_IDS)}")
+    key = req.api_key.strip()
+    if not key:
+        raise HTTPException(status_code=422, detail="api_key is required")
+    with session_scope() as s:
+        existing = s.scalar(
+            select(LLMProviderCredential).where(
+                LLMProviderCredential.org_id == principal.org_id,
+                LLMProviderCredential.provider == provider,
+            )
+        )
+        if existing is not None:
+            s.delete(existing)
+            s.flush()
+        cred = LLMProviderCredential(
+            org_id=principal.org_id, provider=provider,
+            encrypted_secret=encrypt(key), hint=mask(key),
+            base_url=(req.base_url or None), label=req.label, created_by=principal.user_id,
+        )
+        s.add(cred)
+        s.flush()
+        audit(s, principal, "credential.add", "llm_credential", cred.id, {"provider": provider})
+        return _cred_response(cred)
+
+
+@app.delete("/settings/credentials/{credential_id}")
+def delete_credential(
+    credential_id: str, principal: Principal = Depends(require_write)
+) -> dict:
+    with session_scope() as s:
+        cred = s.get(LLMProviderCredential, credential_id)
+        if cred is None or cred.org_id != principal.org_id:
+            raise HTTPException(status_code=404, detail="unknown credential")
+        s.delete(cred)
+        audit(s, principal, "credential.delete", "llm_credential", credential_id,
+              {"provider": cred.provider})
+    return {"deleted": credential_id}
+
+
+@app.get("/settings/routes", response_model=list[RouteResponse])
+def get_routes(principal: Principal = Depends(current_principal)) -> list[RouteResponse]:
+    """Effective task-class routes: a per-org override if set, else the env default."""
+    settings = get_settings()
+    defaults = {
+        "reasoning": settings.route_reasoning,
+        "fast_triage": settings.route_fast_triage,
+        "codegen": settings.route_codegen,
+    }
+    with session_scope() as s:
+        overrides = {
+            r.task_class: (r.provider, r.model)
+            for r in s.scalars(
+                select(ModelRouteOverride).where(ModelRouteOverride.org_id == principal.org_id)
+            ).all()
+        }
+    out = []
+    for tc in _TASK_CLASSES:
+        if tc in overrides:
+            provider, model = overrides[tc]
+            source = "override"
+        else:
+            provider, _, model = defaults[tc].partition("/")
+            source = "default"
+        out.append(RouteResponse(task_class=tc, provider=provider, model=model, source=source))
+    return out
+
+
+@app.put("/settings/routes", response_model=RouteResponse)
+def set_route(req: RouteUpsert, principal: Principal = Depends(require_write)) -> RouteResponse:
+    tc = req.task_class.strip().lower()
+    if tc not in _TASK_CLASSES:
+        raise HTTPException(status_code=422, detail=f"task_class must be one of {_TASK_CLASSES}")
+    provider, model = req.provider.strip(), req.model.strip()
+    if not provider or not model:
+        raise HTTPException(status_code=422, detail="provider and model are required")
+    with session_scope() as s:
+        row = s.scalar(
+            select(ModelRouteOverride).where(
+                ModelRouteOverride.org_id == principal.org_id,
+                ModelRouteOverride.task_class == tc,
+            )
+        )
+        if row is None:
+            row = ModelRouteOverride(
+                org_id=principal.org_id, task_class=tc, provider=provider, model=model,
+                created_by=principal.user_id,
+            )
+            s.add(row)
+        else:
+            row.provider, row.model = provider, model
+        s.flush()
+        audit(s, principal, "route.set", "model_route", row.id, {"task_class": tc})
+        return RouteResponse(task_class=tc, provider=provider, model=model, source="override")
+
+
+@app.delete("/settings/routes/{task_class}")
+def clear_route(task_class: str, principal: Principal = Depends(require_write)) -> dict:
+    """Remove an override so the task class reverts to the env default."""
+    with session_scope() as s:
+        row = s.scalar(
+            select(ModelRouteOverride).where(
+                ModelRouteOverride.org_id == principal.org_id,
+                ModelRouteOverride.task_class == task_class,
+            )
+        )
+        if row is not None:
+            s.delete(row)
+            audit(s, principal, "route.clear", "model_route", row.id, {"task_class": task_class})
+    return {"cleared": task_class}
+
+
 @app.get("/tools")
 def tools() -> dict:
     return {"tools": app.state.registry.specs()}
@@ -553,7 +726,9 @@ def profile_molecule(req: ProfileRequest) -> dict:
 async def design(
     req: DesignRequest, principal: Principal = Depends(current_principal)
 ) -> dict:
-    orch: DesignOrchestrator = app.state.orchestrator
+    # Scope the gateway to the caller's org so its stored BYO-LLM keys/routes apply
+    # (falling back to env defaults, then the offline mock).
+    orch = DesignOrchestrator(LLMGateway(org_id=principal.org_id), app.state.executor)
 
     # Validate project ownership up front (tenant isolation) before any compute.
     if req.project_id is not None:

@@ -17,6 +17,7 @@ dependencies = [
     "redis>=5",
     "pyyaml>=6",
     "alembic>=1.13",
+    "cryptography>=42",
 ]
 
 # pandas is used by exported notebooks (and to test their reproducibility), not by the

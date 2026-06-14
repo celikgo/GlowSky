@@ -108,3 +108,36 @@ class ImportRequest(BaseModel):
 class DiffRequest(BaseModel):
     smiles_a: str = Field(..., examples=["c1ccccc1"])
     smiles_b: str = Field(..., examples=["Cc1ccccc1"])
+
+
+# --- Settings: BYO-LLM credentials & model routing ----------------------------
+
+
+class CredentialCreate(BaseModel):
+    provider: str = Field(..., examples=["anthropic", "openai", "groq", "local"])
+    api_key: str = Field(..., description="Plaintext key; encrypted at rest, never returned.")
+    base_url: str | None = Field(default=None, description="For 'local' / OpenAI-compatible.")
+    label: str | None = None
+
+
+class CredentialResponse(BaseModel):
+    id: str
+    provider: str
+    hint: str  # masked, e.g. "sk-…AB12"
+    base_url: str | None = None
+    label: str | None = None
+    status: str
+    created_at: str
+
+
+class RouteUpsert(BaseModel):
+    task_class: str = Field(..., examples=["reasoning", "fast_triage", "codegen"])
+    provider: str = Field(..., examples=["anthropic"])
+    model: str = Field(..., examples=["claude-opus-4-8"])
+
+
+class RouteResponse(BaseModel):
+    task_class: str
+    provider: str
+    model: str
+    source: str  # "override" (per-org) | "default" (env)

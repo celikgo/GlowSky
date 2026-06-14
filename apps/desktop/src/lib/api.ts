@@ -160,6 +160,31 @@ export interface ToolRunResult {
   provenance: ToolProvenance;
 }
 
+// --- settings (BYO-LLM) ------------------------------------------------------
+
+export interface ProviderInfo {
+  id: string;
+  label: string;
+  needs_base_url: boolean;
+}
+
+export interface Credential {
+  id: string;
+  provider: string;
+  hint: string;
+  base_url: string | null;
+  label: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface RouteInfo {
+  task_class: string;
+  provider: string;
+  model: string;
+  source: "override" | "default";
+}
+
 // --- endpoints ---------------------------------------------------------------
 
 export const api = {
@@ -195,6 +220,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify(seed === undefined ? { args } : { args, seed }),
     }),
+
+  // settings — BYO-LLM credentials & routing
+  listProviders: () =>
+    request<{ providers: ProviderInfo[] }>("/settings/providers").then((r) => r.providers),
+  listCredentials: () => request<Credential[]>("/settings/credentials"),
+  addCredential: (provider: string, apiKey: string, baseUrl?: string) =>
+    request<Credential>("/settings/credentials", {
+      method: "POST",
+      body: JSON.stringify({ provider, api_key: apiKey, base_url: baseUrl || null }),
+    }),
+  deleteCredential: (id: string) =>
+    request<{ deleted: string }>(`/settings/credentials/${id}`, { method: "DELETE" }),
+  getRoutes: () => request<RouteInfo[]>("/settings/routes"),
+  setRoute: (taskClass: string, provider: string, model: string) =>
+    request<RouteInfo>("/settings/routes", {
+      method: "PUT",
+      body: JSON.stringify({ task_class: taskClass, provider, model }),
+    }),
+  clearRoute: (taskClass: string) =>
+    request<{ cleared: string }>(`/settings/routes/${taskClass}`, { method: "DELETE" }),
   design: (goal: string, seed_smiles: string) =>
     request<DesignResult>("/agent/design", {
       method: "POST",

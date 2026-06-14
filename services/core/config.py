@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     vina_bin: str = "vina"
     obabel_bin: str = "obabel"
 
+    # --- Secrets at rest ---
+    # Fernet key (44-char urlsafe-base64) used to encrypt stored BYO-LLM credentials.
+    # Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # If unset, a deterministic DEV key is derived — fine for local dev, NEVER production.
+    secret_key: str | None = None
+
     # --- Auth & tenancy ---
     # When False (default), the API runs in single-tenant dev mode: every request
     # resolves to a built-in local principal (local-org/owner) — preserving Phase 0's

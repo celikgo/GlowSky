@@ -19,10 +19,17 @@ from services.llm_gateway.types import (
 
 
 class LLMGateway:
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(self, settings: Settings | None = None, org_id: str | None = None) -> None:
         settings = settings or get_settings()
-        self._keys = KeyStore(settings)
-        self._router = Router(settings)
+        # When scoped to an org, the org's stored BYO-LLM keys/routes take precedence
+        # over env defaults (graceful fallback to mock still applies).
+        resolver = None
+        if org_id is not None:
+            from services.llm_gateway.credentials import CredentialResolver
+
+            resolver = CredentialResolver(org_id)
+        self._keys = KeyStore(settings, resolver)
+        self._router = Router(settings, resolver)
         self._mock: Provider = MockProvider()
         self._litellm: Provider = LiteLLMProvider(self._keys)
 

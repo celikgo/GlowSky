@@ -4,7 +4,7 @@ import { TopBar } from "./components/TopBar";
 import { DesignScreen } from "./screens/DesignScreen";
 import { LibraryScreen } from "./screens/LibraryScreen";
 import { ToolsScreen } from "./screens/ToolsScreen";
-import { Placeholder } from "./screens/Placeholder";
+import { SettingsScreen } from "./screens/SettingsScreen";
 import "./App.css";
 
 const TITLES: Record<NavKey, string> = {
@@ -30,10 +30,7 @@ export default function App() {
           ) : nav === "tools" ? (
             <ToolsScreen />
           ) : (
-            <Placeholder
-              title={TITLES[nav]}
-              note="Coming in a later slice — the backend seam already exists."
-            />
+            <SettingsScreen />
           )}
         </div>
       </main>

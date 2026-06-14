@@ -1,5 +1,11 @@
 # Glowsky
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
+[![Tests](https://img.shields.io/badge/tests-47%20passing-brightgreen.svg)](tests/)
+[![Status: Phase 0](https://img.shields.io/badge/status-Phase%200%20scaffold-orange.svg)](docs/09-roadmap.md)
+[![Code style: RDKit](https://img.shields.io/badge/chemistry-RDKit-26a69a.svg)](https://www.rdkit.org/)
+
 **The AI-native workspace for small-molecule drug design — "Cursor for Chemists."**
 
 Glowsky is an AI-first environment where medicinal chemists and computational drug-discovery researchers design, optimize, analyze, and manage small molecules through natural language and intelligent agents — combining IDE-grade ergonomics, deep chemistry tooling (RDKit, docking, ADMET, retrosynthesis, literature RAG), and **Bring-Your-Own-LLM** support, available as SaaS and self-hosted.

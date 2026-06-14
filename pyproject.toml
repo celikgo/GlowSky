@@ -2,6 +2,8 @@
 name = "glowsky"
 version = "0.0.1"
 description = "Glowsky — AI-native workspace for small-molecule drug design (Phase 0 scaffold)"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "fastapi>=0.110",
@@ -20,7 +22,7 @@ dependencies = [
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27"]
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

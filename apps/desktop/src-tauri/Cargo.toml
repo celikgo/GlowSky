@@ -1,0 +1,25 @@
+[package]
+name = "glowsky-desktop"
+version = "0.0.1"
+description = "Glowsky — the AI-native workspace for small-molecule drug design"
+authors = ["Glowsky"]
+edition = "2021"
+rust-version = "1.77"
+
+# The library the binary and (future) mobile targets share.
+[lib]
+name = "glowsky_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# Enabled by `tauri dev`/`tauri build` to use the embedded assets / dev server.
+custom-protocol = ["tauri/custom-protocol"]

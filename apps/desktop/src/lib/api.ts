@@ -1,0 +1,94 @@
+/**
+ * Thin client for the Glowsky FastAPI backend.
+ *
+ * In dev the backend runs at http://localhost:8000 (`make run`). Override with
+ * VITE_API_BASE. When the desktop shell bundles the backend as a Tauri sidecar, this
+ * is the only place the base URL needs to change.
+ */
+const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://localhost:8000";
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { "content-type": "application/json" },
+    ...init,
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = (await res.json()).detail ?? detail;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  return res.json() as Promise<T>;
+}
+
+// --- types (mirror the API response shapes) ----------------------------------
+
+export interface Health {
+  status: string;
+  routes: Record<string, string>;
+  tools: number;
+  backends: { admet: string; docking: string };
+}
+
+export interface Candidate {
+  smiles: string;
+  inchikey: string;
+  modification: string;
+  properties: Record<string, number | boolean>;
+  passed_filters: boolean;
+  score: number;
+}
+
+export interface DesignPlan {
+  max_analogs: number;
+  constraints: Record<string, number | boolean | null>;
+  rationale: string;
+}
+
+export interface TraceEntry {
+  step: number;
+  tool: string;
+  tool_version: string;
+  summary: string;
+  duration_ms: number;
+  cache_hit: boolean;
+}
+
+export interface DesignResult {
+  run_id: string | null;
+  goal: string;
+  parent_smiles: string;
+  plan: DesignPlan;
+  candidates: Candidate[];
+  trace: TraceEntry[];
+  explanation: string;
+  models_used: Record<string, string>;
+}
+
+// --- endpoints ---------------------------------------------------------------
+
+export const api = {
+  base: BASE,
+  health: () => request<Health>("/health"),
+  design: (goal: string, seed_smiles: string) =>
+    request<DesignResult>("/agent/design", {
+      method: "POST",
+      body: JSON.stringify({ goal, seed_smiles, persist: true }),
+    }),
+  profile: (smiles: string) =>
+    request<{ canonical_smiles: string; inchikey: string; properties: Record<string, number | boolean> }>(
+      "/molecules/profile",
+      { method: "POST", body: JSON.stringify({ smiles }) },
+    ),
+  exportRunUrl: (runId: string, format: "ipynb" | "md") =>
+    `${BASE}/runs/${runId}/export?format=${format}`,
+};

@@ -2,7 +2,8 @@ PY ?= .venv313/bin/python
 PIP ?= .venv313/bin/pip
 ALEMBIC ?= $(PY) -m alembic
 
-.PHONY: venv install test run demo clean migrate migration migrate-down migrate-history
+.PHONY: venv install test run demo clean migrate migration migrate-down migrate-history \
+        desktop desktop-install desktop-build
 
 venv:                ## Create the Python 3.13 virtualenv (RDKit-compatible)
 	/opt/homebrew/bin/python3.13 -m venv .venv313
@@ -45,6 +46,15 @@ migrate-down:        ## Roll back the most recent migration
 
 migrate-history:     ## Show migration history + current revision
 	$(ALEMBIC) history --verbose && $(ALEMBIC) current
+
+desktop-install:     ## Install the desktop app's JS deps (Tauri + React + Vite)
+	cd apps/desktop && pnpm install
+
+desktop:             ## Run the desktop app (needs `make run` for the backend)
+	cd apps/desktop && pnpm desktop
+
+desktop-build:       ## Build a native desktop installer (.dmg/.msi/.deb)
+	cd apps/desktop && pnpm desktop:build
 
 demo:                ## Run a sample design loop and print the result
 	$(PY) -m scripts.demo

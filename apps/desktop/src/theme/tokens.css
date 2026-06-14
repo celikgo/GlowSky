@@ -1,0 +1,59 @@
+/*
+ * Glowsky design tokens — Twitter "Dim" palette.
+ *
+ * "Dim" is Twitter/X's blue-tinted dark theme (not the pure-black "Lights out").
+ * These are the canonical Dim values; everything else in the UI references them so
+ * the whole app re-skins from this one file.
+ */
+:root {
+  /* Surfaces */
+  --bg: #15202b; /* app background (Dim primary) */
+  --bg-elevated: #1e2732; /* cards, panels, modals */
+  --bg-elevated-2: #243340; /* nested surfaces / chips */
+  --bg-hover: #1c2a35; /* row / item hover */
+  --bg-active: #22303c; /* pressed / selected */
+  --bg-input: #273340; /* text inputs */
+  --scrim: rgba(91, 112, 131, 0.4); /* modal backdrop (Twitter scrim) */
+
+  /* Lines */
+  --border: #38444d; /* dividers, input borders (Dim) */
+  --border-strong: #5b7083;
+
+  /* Text */
+  --text: #f7f9f9; /* primary */
+  --text-secondary: #8b98a5; /* muted / metadata */
+  --text-tertiary: #5b7083; /* faint / disabled */
+  --text-on-accent: #ffffff;
+
+  /* Brand / accent (Twitter blue) */
+  --accent: #1d9bf0;
+  --accent-hover: #1a8cd8;
+  --accent-pressed: #177bbf;
+  --accent-subtle: rgba(29, 155, 240, 0.1); /* tinted backgrounds */
+  --accent-border: rgba(29, 155, 240, 0.4);
+
+  /* Semantic (Twitter's accent set) */
+  --success: #00ba7c;
+  --warning: #ffd400;
+  --danger: #f4212e;
+  --like: #f91880;
+
+  /* Radii — Twitter uses generously rounded corners */
+  --radius-sm: 4px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 9999px;
+
+  /* Elevation */
+  --shadow-1: 0 0 12px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.5);
+
+  /* Type */
+  --font: "Helvetica Neue", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto,
+    Arial, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+
+  /* Layout */
+  --sidebar-w: 248px;
+  --topbar-h: 53px;
+}

@@ -110,6 +110,33 @@ mode |   affinity | dist from best mode
     assert best["mode"] == 1 and best["affinity"] == -8.4
 
 
+def test_vina_split_pose_models_pairs_geometry_with_affinity():
+    # A two-model Vina output .pdbqt (the per-pose blocks Vina writes to --out), trimmed
+    # to a couple of atoms each — exercises the MODEL/REMARK/ENDMDL parsing.
+    out_pdbqt = """MODEL 1
+REMARK VINA RESULT:    -8.4      0.000      0.000
+ROOT
+ATOM      1  N   LIG d   1      11.224  25.382   3.001  1.00  0.00    -0.345 N
+ATOM      2  C   LIG d   1      12.001  24.553   3.882  1.00  0.00    +0.123 C
+ENDROOT
+TORSDOF 3
+ENDMDL
+MODEL 2
+REMARK VINA RESULT:    -7.1      1.984      3.221
+ROOT
+ATOM      1  N   LIG d   1      10.998  25.101   3.330  1.00  0.00    -0.345 N
+ENDROOT
+TORSDOF 3
+ENDMDL
+"""
+    poses = VinaDockingBackend.split_pose_models(out_pdbqt)
+    assert [p["mode"] for p in poses] == [1, 2]
+    assert poses[0]["affinity"] == -8.4 and poses[1]["affinity"] == -7.1
+    # The geometry block carries the real atom coordinates a viewer can render.
+    assert "ATOM      1  N   LIG" in poses[0]["pdbqt"]
+    assert poses[0]["pdbqt"].count("ATOM") == 2 and poses[1]["pdbqt"].count("ATOM") == 1
+
+
 def test_vina_raises_not_configured_when_binary_missing():
     be = VinaDockingBackend(vina_bin="vina-does-not-exist", obabel_bin="obabel-nope")
     with pytest.raises(BackendNotConfigured):

@@ -47,6 +47,19 @@ def test_conformer_endpoint_returns_3d_molblock():
         assert bad.status_code == 422
 
 
+def test_docking_sample_returns_receptor_and_ligand():
+    with TestClient(app) as client:
+        r = client.get("/examples/docking/sample")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["id"] == "1hsg"
+        # Real experimental coordinates: protein ATOM records + a ligand block.
+        assert "ATOM" in body["receptor_pdb"]
+        assert "HETATM" in body["ligand_pdb"]
+        # Honest provenance — this is sample data, not a computed docking result.
+        assert "1HSG" in body["source"]
+
+
 def test_design_endpoint_persists_and_returns_provenance():
     with TestClient(app) as client:
         r = client.post(

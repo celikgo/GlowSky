@@ -1,30 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../lib/api";
-
-// 3Dmol.js is ~hundreds of KB and only needed once a card is flipped to 3D, so it's
-// dynamically imported (and cached by the module loader) on first mount.
-type Viewer = {
-  addModel: (data: string, format: string) => void;
-  setStyle: (sel: object, style: object) => void;
-  setBackgroundColor: (color: number, alpha: number) => void;
-  zoomTo: () => void;
-  render: () => void;
-  resize: () => void;
-  clear: () => void;
-};
-type Mol3D = { createViewer: (el: HTMLElement, config?: object) => Viewer };
-
-let mol3dPending: Promise<Mol3D> | null = null;
-function loadMol3D(): Promise<Mol3D> {
-  if (!mol3dPending) {
-    mol3dPending = import("3dmol/build/3Dmol.es6.js").then((m) => m as unknown as Mol3D);
-  }
-  return mol3dPending;
-}
-
-// The Dim elevated surface (var(--bg-elevated)) as an int, so the WebGL canvas blends
-// into the card instead of sitting on a black rectangle.
-const SURFACE = 0x1e2732;
+import { loadMol3D, SURFACE, type Mol3DViewer } from "../lib/mol3d";
 
 /**
  * Interactive 3D structure viewer. Fetches a single MMFF-minimized conformer (MOL block
@@ -48,7 +24,7 @@ export function Molecule3D({
 
   useEffect(() => {
     let cancelled = false;
-    let viewer: Viewer | null = null;
+    let viewer: Mol3DViewer | null = null;
     setLoading(true);
     setError(null);
 

@@ -337,6 +337,98 @@
   padding: 1px 6px;
 }
 
+/* Docking screen + receptor/ligand pose viewer */
+.docking {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) minmax(420px, 1.2fr);
+  gap: 16px;
+  align-items: start;
+}
+.docking__form,
+.docking__sample {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.docking__hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0;
+}
+.docking__pocket {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.docking__notice {
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.docking__notice strong {
+  color: var(--text);
+}
+.docking__source {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  margin: 0;
+}
+.docking__poses {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.docking__poses th,
+.docking__poses td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.docking__poses th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.docking__poses td {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.pose3d {
+  position: relative;
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.pose3d__canvas {
+  position: relative;
+  width: 100%;
+}
+.pose3d__canvas canvas {
+  display: block;
+  border-radius: var(--radius);
+}
+.pose3d__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  background: var(--bg-elevated);
+}
+.pose3d__overlay--error {
+  color: var(--danger, #f4212e);
+}
+.btn--ghost {
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
 .molcard__smiles {
   color: var(--text-secondary);
   word-break: break-all;

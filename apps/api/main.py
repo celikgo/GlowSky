@@ -27,6 +27,9 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -753,6 +756,25 @@ def molecule_conformer(req: ProfileRequest) -> dict:
         "canonical_smiles": result.canonical_smiles,
         "inchikey": result.inchikey,
         **conformer,
+    }
+
+
+@app.get("/examples/docking/sample")
+def docking_sample() -> dict:
+    """A real protein–ligand complex (RCSB 1HSG) for demoing the pose viewer.
+
+    This is experimental crystallographic data shipped as a sample so the receptor +
+    ligand-pose overlay is demonstrable without a configured docking engine — it is NOT
+    a Glowsky-computed docking result. Live docking goes through the adapter-gated
+    `dock` tool, which surfaces real Vina pose geometry when a backend is configured.
+    """
+    sample_dir = _REPO_ROOT / "examples" / "docking"
+    return {
+        "id": "1hsg",
+        "name": "HIV-1 protease + indinavir (RCSB 1HSG)",
+        "source": "RCSB PDB 1HSG — experimental structure, sample data (not computed)",
+        "receptor_pdb": (sample_dir / "1hsg_receptor.pdb").read_text(),
+        "ligand_pdb": (sample_dir / "1hsg_ligand.pdb").read_text(),
     }
 
 

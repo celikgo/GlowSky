@@ -126,6 +126,32 @@ export interface Conformer {
   seed: number;
 }
 
+export interface DockingSample {
+  id: string;
+  name: string;
+  source: string;
+  receptor_pdb: string;
+  ligand_pdb: string;
+}
+
+export interface DockPose {
+  mode: number;
+  affinity: number;
+  rmsd_lb: number;
+  rmsd_ub: number;
+  pdbqt: string | null;
+}
+
+export interface DockResult {
+  engine: string;
+  score: number;
+  score_unit: string;
+  num_modes: number;
+  poses: DockPose[];
+  best_pose_pdbqt: string | null;
+  pocket: { center: number[]; size: number[] };
+}
+
 // --- tools -------------------------------------------------------------------
 
 export interface JsonSchemaProp {
@@ -263,6 +289,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ smiles }),
     }),
+  dockingSample: () => request<DockingSample>("/examples/docking/sample"),
+  dock: (args: {
+    ligand_smiles: string;
+    receptor_ref: string;
+    center: number[];
+    size: number[];
+  }) =>
+    request<{ output: DockResult }>("/tools/dock", {
+      method: "POST",
+      body: JSON.stringify({ args }),
+    }).then((r) => r.output),
   exportRunUrl: (runId: string, format: "ipynb" | "md") =>
     `${BASE}/runs/${runId}/export?format=${format}`,
 };

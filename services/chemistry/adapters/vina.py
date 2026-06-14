@@ -27,6 +27,10 @@ _POSE_ROW = re.compile(
     r"^\s*(\d+)\s+(-?\d+\.\d+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s*$"
 )
 
+# Vina writes each docked pose as a MODEL block in the output .pdbqt, tagged with its
+# affinity:  REMARK VINA RESULT:    -8.4      0.000      0.000
+_VINA_RESULT = re.compile(r"^REMARK\s+VINA RESULT:\s+(-?\d+\.\d+)")
+
 
 class VinaDockingBackend:
     """Dock a ligand into a receptor pocket via the AutoDock Vina binary."""
@@ -83,6 +87,39 @@ class VinaDockingBackend:
                 })
         return poses
 
+    @staticmethod
+    def split_pose_models(out_pdbqt: str) -> list[dict]:
+        """Split Vina's multi-model output .pdbqt into per-pose blocks.
+
+        Returns [{mode, affinity, pdbqt}, ...] in file order — the 3D coordinates a
+        structure viewer renders, paired with each pose's docked affinity (read from
+        its `REMARK VINA RESULT` line). A pose viewer needs the geometry, not just the
+        scalar score, so we surface the real atoms instead of discarding them.
+        """
+        poses: list[dict] = []
+        current: list[str] | None = None
+        mode = 0
+        affinity: float | None = None
+        for line in out_pdbqt.splitlines():
+            if line.startswith("MODEL"):
+                current = []
+                mode += 1
+                affinity = None
+            elif line.startswith("ENDMDL"):
+                if current is not None:
+                    poses.append({
+                        "mode": mode,
+                        "affinity": affinity,
+                        "pdbqt": "\n".join(current) + "\n",
+                    })
+                current = None
+            elif current is not None:
+                m = _VINA_RESULT.match(line)
+                if m:
+                    affinity = float(m.group(1))
+                current.append(line)
+        return poses
+
     # --- real docking ---------------------------------------------------------
 
     def _require_tools(self) -> None:
@@ -134,14 +171,21 @@ class VinaDockingBackend:
             poses = self.parse_output(proc.stdout)
             if not poses:
                 raise RuntimeError(f"Vina produced no poses; stdout:\n{proc.stdout[-500:]}")
+
+            # Read back the docked geometry the temp dir is about to discard, and attach
+            # each pose's 3D coordinates (.pdbqt block) to its scored row by mode index.
+            with open(out_path) as fh:
+                geom_by_mode = {g["mode"]: g["pdbqt"] for g in self.split_pose_models(fh.read())}
+            for p in poses:
+                p["pdbqt"] = geom_by_mode.get(p["mode"])
+
             best = min(poses, key=lambda p: p["affinity"])
-            # NOTE: poses_ref would be persisted to object storage in production; the temp
-            # dir is cleaned on return, so we surface scores + count, not the raw pose file.
             return {
                 "score": best["affinity"],
                 "score_unit": "kcal/mol",
                 "num_modes": len(poses),
                 "poses": poses,
+                "best_pose_pdbqt": best.get("pdbqt"),
                 "pocket": {"center": list(pocket.center), "size": list(pocket.size)},
             }
 

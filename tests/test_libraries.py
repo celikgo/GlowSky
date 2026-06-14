@@ -67,6 +67,32 @@ def test_import_csv_with_properties_and_dedup():
         assert any(m["properties"].get("IC50") == "12.5" for m in mols)
 
 
+def test_reimport_merges_properties_onto_existing_molecule():
+    with TestClient(app) as client:
+        pid = client.post("/projects", json={"name": "Merge project"}).json()["id"]
+        lid = client.post(f"/projects/{pid}/libraries", json={"name": "Merge"}).json()["id"]
+
+        # First import: bare SMILES, no properties.
+        first = client.post(f"/libraries/{lid}/import",
+                            json={"format": "smiles", "content": "CCO ethanol"})
+        assert first.json()["imported"] == 1
+
+        # Second import: same molecule with an assay column -> property is merged in.
+        second = client.post(f"/libraries/{lid}/import", json={
+            "format": "csv", "content": "smiles,name,IC50\nCCO,ethanol,12.5"})
+        body = second.json()
+        assert body["imported"] == 0 and body["duplicates"] == 1
+        assert body["updated"] == 1  # existing row gained the IC50 column
+
+        mols = client.get(f"/libraries/{lid}").json()["molecules"]
+        assert mols[0]["properties"]["IC50"] == "12.5"
+
+        # A third identical import changes nothing.
+        third = client.post(f"/libraries/{lid}/import", json={
+            "format": "csv", "content": "smiles,name,IC50\nCCO,ethanol,12.5"})
+        assert third.json()["updated"] == 0
+
+
 def test_molecule_diff_endpoint():
     with TestClient(app) as client:
         r = client.post("/molecules/diff", json={"smiles_a": "c1ccccc1", "smiles_b": "Cc1ccccc1"})

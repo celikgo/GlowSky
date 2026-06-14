@@ -111,6 +111,7 @@ export interface LibraryDetail {
 export interface ImportResult {
   imported: number;
   duplicates: number;
+  updated: number;
   invalid: { input: string; error: string }[];
   invalid_count: number;
 }

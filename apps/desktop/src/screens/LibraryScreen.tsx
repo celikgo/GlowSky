@@ -103,6 +103,7 @@ export function LibraryScreen() {
     try {
       const r = await api.importMolecules(libraryId, importFormat, importText);
       const bits = [`${r.imported} imported`];
+      if (r.updated) bits.push(`${r.updated} updated`);
       if (r.duplicates) bits.push(`${r.duplicates} duplicate`);
       if (r.invalid_count) bits.push(`${r.invalid_count} invalid`);
       setImportMsg(bits.join(" · "));

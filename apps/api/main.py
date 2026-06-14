@@ -279,7 +279,7 @@ def import_molecules(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    imported, duplicates, invalid = 0, 0, []
+    imported, duplicates, updated, invalid = 0, 0, 0, []
     with session_scope() as s:
         lib = load_library(s, library_id, principal)
         for pm in parsed:
@@ -303,6 +303,9 @@ def import_molecules(
                 )
                 s.add(mol)
                 s.flush()
+            elif _merge_into(mol, pm):
+                # Existing molecule: fold in any new properties / backfill the name.
+                updated += 1
             # Add to the library if not already a member.
             exists = s.scalar(
                 select(LibraryMembership).where(
@@ -317,10 +320,30 @@ def import_molecules(
             else:
                 duplicates += 1
         audit(s, principal, "library.import", "library", library_id,
-              {"format": req.format, "imported": imported, "invalid": len(invalid)})
+              {"format": req.format, "imported": imported, "updated": updated,
+               "invalid": len(invalid)})
 
-    return {"imported": imported, "duplicates": duplicates,
+    return {"imported": imported, "duplicates": duplicates, "updated": updated,
             "invalid": invalid, "invalid_count": len(invalid)}
+
+
+def _merge_into(mol: Molecule, pm) -> bool:
+    """Fold an imported record's properties (and name) into an existing molecule.
+
+    New keys are added and overlapping keys overwritten with the imported value;
+    a missing name is backfilled. Reassigns `properties` (rather than mutating in
+    place) so SQLAlchemy detects the JSON change. Returns True if anything changed.
+    """
+    changed = False
+    if pm.properties:
+        merged = {**(mol.properties or {}), **pm.properties}
+        if merged != (mol.properties or {}):
+            mol.properties = merged
+            changed = True
+    if pm.name and not mol.name:
+        mol.name = pm.name
+        changed = True
+    return changed
 
 
 @app.get("/libraries/{library_id}/export")

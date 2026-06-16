@@ -1,0 +1,31 @@
+# THY accelerator product #3 (Cargo Dimensioning) plugged into Glowsky as a sandboxed
+# container tool. Drop under GLOWSKY_TOOLS_DIR and it registers as an agent-callable tool
+# with the same cache/firewall/provenance as built-ins. AI measures upstream (advisory);
+# this tool computes the deterministic IATA chargeable weight (ADR-140).
+name: cargo_dimensioning
+version: "0.1.0"
+category: logistics
+summary: IATA volumetric + chargeable weight from cargo dimensions (deterministic billing core).
+image: glowsky-tool-cargo-dimensioning:0.1.0
+
+compute_class: cpu_light
+latency_class: instant
+determinism: deterministic
+emits_structures: false
+egress: none
+
+input_schema:
+  type: object
+  properties:
+    length_cm: { type: number }
+    width_cm: { type: number }
+    height_cm: { type: number }
+    actual_weight_kg: { type: number }
+    pieces: { type: integer }
+    divisor: { type: number }
+  required: [length_cm, width_cm, height_cm, actual_weight_kg]
+
+resources:
+  cpu: 0.5
+  mem_mb: 256
+  timeout_s: 30

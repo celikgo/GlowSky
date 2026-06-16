@@ -1,0 +1,35 @@
+# THY accelerator product #2 (AI Damage Detection) plugged into Glowsky as a sandboxed
+# container tool. The vision inference is upstream/advisory; this tool is the deterministic
+# triage gate that decides what a human reviews (classify -> pending_review -> confirm).
+name: damage_detect
+version: "0.1.0"
+category: logistics
+summary: Deterministic damage-triage gate over a vision model's candidate detections.
+image: glowsky-tool-damage-detect:0.1.0
+
+compute_class: cpu_light
+latency_class: instant
+determinism: deterministic
+emits_structures: false
+egress: none
+
+input_schema:
+  type: object
+  properties:
+    detections:
+      type: array
+      items:
+        type: object
+        properties:
+          label: { type: string }
+          confidence: { type: number }
+          bbox: { type: array, items: { type: number } }
+        required: [confidence]
+    confirm_threshold: { type: number }
+    review_threshold: { type: number }
+  required: [detections]
+
+resources:
+  cpu: 0.5
+  mem_mb: 256
+  timeout_s: 30

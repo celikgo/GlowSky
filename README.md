@@ -120,6 +120,15 @@ curl -s localhost:8000/tools/admet_ai -H 'content-type: application/json' \
 This is how the ADMET seam (`predict_admet`, docs/13 §10) is satisfied by a real model
 with **zero Glowsky code changes** — just an image + a `glowsky-tool.yaml`.
 
+**The tool seam is domain-agnostic — it isn't only chemistry.** `examples/tools/` also
+ships the nakitte-carbon **ULD-line accelerator products** as sandboxed `logistics` tools,
+proving any team's model plugs in the same way: `cargo_dimensioning` (IATA volumetric +
+chargeable weight — the deterministic billing core; AI measures upstream, ADR-140),
+`damage_detect` (the deterministic triage gate over a vision model's detections —
+classify → pending_review → human-confirm), and `apron_energy` (apron GSE energy + grid
+CO₂ projected from ULD movements, ADR-139). All pure-stdlib, deterministic, `--network none`.
+Build with `make tools-thy`; they register exactly like a built-in tool.
+
 ### Run the whole stack on Docker
 
 ```bash

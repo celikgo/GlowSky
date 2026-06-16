@@ -148,6 +148,18 @@ button {
   background: rgba(244, 33, 46, 0.12);
   color: var(--danger);
 }
+/* A chip rendered as a <button> (e.g. authenticated downloads): strip UA chrome,
+   add a hover affordance. Keeps the chip's size/weight from the base rule. */
+.chip--btn {
+  border: none;
+  font-family: inherit;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.chip--btn:hover {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
 
 .mono {
   font-family: var(--font-mono);

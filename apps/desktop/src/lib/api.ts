@@ -34,6 +34,36 @@ function authHeaders(): Record<string, string> {
   return t ? { authorization: `Bearer ${t}` } : {};
 }
 
+/**
+ * Download an authenticated file. Export endpoints stream an attachment, but a plain
+ * `<a href>` can't send the `Authorization` header — so we fetch with auth, then save
+ * the blob via a transient object URL. Filename comes from Content-Disposition when the
+ * server exposes it (CORS), else the provided fallback.
+ */
+async function download(path: string, fallbackName: string): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, { headers: authHeaders() });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = (await res.json()).detail ?? detail;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  const cd = res.headers.get("content-disposition") ?? "";
+  const name = /filename="?([^"]+)"?/.exec(cd)?.[1] ?? fallbackName;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
@@ -282,8 +312,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ format, content }),
     }),
-  exportLibraryUrl: (libraryId: string, format: IoFormat) =>
-    `${BASE}/libraries/${libraryId}/export?format=${format}`,
+  downloadLibrary: (libraryId: string, format: IoFormat) =>
+    download(`/libraries/${libraryId}/export?format=${format}`, `library-${libraryId}.${format}`),
 
   // tools
   listTools: () => request<{ tools: ToolSpec[] }>("/tools").then((r) => r.tools),
@@ -395,6 +425,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ args }),
     }).then((r) => r.output),
-  exportRunUrl: (runId: string, format: "ipynb" | "md") =>
-    `${BASE}/runs/${runId}/export?format=${format}`,
+  downloadRun: (runId: string, format: "ipynb" | "md") =>
+    download(`/runs/${runId}/export?format=${format}`, `glowsky-run-${runId}.${format}`),
 };

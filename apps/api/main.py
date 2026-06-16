@@ -117,6 +117,8 @@ app.add_middleware(
     allow_origin_regex=None if "*" not in _cors else ".*",
     allow_methods=["*"],
     allow_headers=["*"],
+    # Let the cross-origin webview read the download filename from authenticated exports.
+    expose_headers=["content-disposition"],
 )
 
 

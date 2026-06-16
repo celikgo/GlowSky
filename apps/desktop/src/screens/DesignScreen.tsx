@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   api,
+  ApiError,
   type Candidate,
   type DesignPlan,
   type TraceEntry,
@@ -76,6 +77,12 @@ export function DesignScreen() {
     });
   }
 
+  function downloadRun(id: string, format: "ipynb" | "md") {
+    api.downloadRun(id, format).catch((e) =>
+      setError(e instanceof ApiError ? e.message : "Download failed."),
+    );
+  }
+
   const kept = candidates.filter((c) => c.passed_filters).length;
   const hasResult = streaming || candidates.length > 0 || plan !== null || runId !== null;
 
@@ -132,12 +139,12 @@ export function DesignScreen() {
             ))}
             {runId ? (
               <span className="export-links">
-                <a className="chip" href={api.exportRunUrl(runId, "ipynb")} target="_blank" rel="noreferrer">
+                <button className="chip chip--btn" onClick={() => downloadRun(runId, "ipynb")}>
                   ⬇ notebook
-                </a>
-                <a className="chip" href={api.exportRunUrl(runId, "md")} target="_blank" rel="noreferrer">
+                </button>
+                <button className="chip chip--btn" onClick={() => downloadRun(runId, "md")}>
                   ⬇ report
-                </a>
+                </button>
               </span>
             ) : null}
           </div>

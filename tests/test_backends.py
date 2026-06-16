@@ -143,6 +143,18 @@ def test_vina_raises_not_configured_when_binary_missing():
         be.dock("c1ccccc1", "missing-receptor.pdbqt", Pocket((0, 0, 0), (10, 10, 10)))
 
 
+def test_vina_rejects_receptor_outside_receptors_dir(tmp_path):
+    """M1: a caller-supplied receptor_ref must resolve under receptors_dir — traversal is
+    rejected BEFORE any existence check, so it can't probe the worker filesystem."""
+    (tmp_path / "ok.pdbqt").write_text("REMARK\n")
+    be = VinaDockingBackend(receptors_dir=str(tmp_path))
+    # In-bounds path resolves; out-of-bounds (and traversal) is refused with ValueError.
+    assert be._resolve_receptor(str(tmp_path / "ok.pdbqt")) == str((tmp_path / "ok.pdbqt").resolve())
+    for evil in ["/etc/passwd", str(tmp_path / ".." / "secret.pdbqt"), "../../etc/hosts"]:
+        with pytest.raises(ValueError):
+            be._resolve_receptor(evil)
+
+
 def test_configure_backends_wires_vina_from_settings():
     # The docker-compose.docking.yml overlay sets GLOWSKY_DOCKING_BACKEND=vina; this is the
     # wiring that turns that env into a live VinaDockingBackend on the dock tool seam.
@@ -153,7 +165,8 @@ def test_configure_backends_wires_vina_from_settings():
     from services.chemistry.adapters.wiring import configure_backends
 
     settings = SimpleNamespace(
-        admet_backend="none", docking_backend="vina", vina_bin="vina", obabel_bin="obabel"
+        admet_backend="none", docking_backend="vina", vina_bin="vina", obabel_bin="obabel",
+        docking_receptors_dir="examples/docking",
     )
     original = docking._backend
     try:

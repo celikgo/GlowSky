@@ -1,9 +1,12 @@
 """BYO-LLM key management: encryption at rest, masking, routing, tenant isolation,
-and the gateway actually using stored credentials/routes."""
+and the gateway actually using stored credentials/routes.
+
+Credential/route endpoints are tenant-scoped, so these run under real nakitte JWTs
+(``@pytest.mark.real_auth``) — each ``tenant()`` is a fresh isolated org.
+"""
 from __future__ import annotations
 
-import uuid
-
+import pytest
 from fastapi.testclient import TestClient
 
 from apps.api.main import app
@@ -11,15 +14,7 @@ from services.core.crypto import decrypt, encrypt, mask
 from services.llm_gateway.credentials import CredentialResolver
 from services.llm_gateway.gateway import LLMGateway
 from services.llm_gateway.types import TaskClass
-from tests.test_auth import auth_enabled
-
-
-def _email() -> str:
-    return f"set-{uuid.uuid4().hex[:12]}@lab.edu"
-
-
-def _account(client) -> dict:
-    return client.post("/auth/signup", json={"email": _email(), "org_name": "Set Org"}).json()
+from tests.conftest import tenant
 
 
 # --- crypto -------------------------------------------------------------------
@@ -37,107 +32,101 @@ def test_encryption_round_trip_and_mask():
 # --- credentials API ----------------------------------------------------------
 
 
+@pytest.mark.real_auth
 def test_add_credential_never_returns_or_stores_plaintext():
     with TestClient(app) as client:
-        acct = _account(client)
-        h = {"Authorization": f"Bearer {acct['api_key']}"}
+        acct = tenant()
+        h = acct["headers"]
         key = "sk-secret-PLAINTEXT-9999"
-        with auth_enabled(True):
-            r = client.post("/settings/credentials", headers=h,
-                            json={"provider": "anthropic", "api_key": key})
-            assert r.status_code == 201
-            assert key not in r.text  # the secret is never echoed back
-            body = r.json()
-            assert body["hint"].endswith("9999") and "api_key" not in body
+        r = client.post("/settings/credentials", headers=h,
+                        json={"provider": "anthropic", "api_key": key})
+        assert r.status_code == 201
+        assert key not in r.text  # the secret is never echoed back
+        body = r.json()
+        assert body["hint"].endswith("9999") and "api_key" not in body
 
-            # Listing shows only the masked hint, never the key.
-            lst = client.get("/settings/credentials", headers=h)
-            assert key not in lst.text
-            assert lst.json()[0]["provider"] == "anthropic"
+        # Listing shows only the masked hint, never the key.
+        lst = client.get("/settings/credentials", headers=h)
+        assert key not in lst.text
+        assert lst.json()[0]["provider"] == "anthropic"
 
     # And the gateway can decrypt it for real use.
     assert CredentialResolver(acct["org_id"]).api_key("anthropic") == key
 
 
+@pytest.mark.real_auth
 def test_credential_upsert_keeps_one_per_provider():
     with TestClient(app) as client:
-        acct = _account(client)
-        h = {"Authorization": f"Bearer {acct['api_key']}"}
-        with auth_enabled(True):
-            client.post("/settings/credentials", headers=h,
-                        json={"provider": "openai", "api_key": "sk-one-1111"})
-            client.post("/settings/credentials", headers=h,
-                        json={"provider": "openai", "api_key": "sk-two-2222"})
-            creds = client.get("/settings/credentials", headers=h).json()
-            openai = [c for c in creds if c["provider"] == "openai"]
-            assert len(openai) == 1 and openai[0]["hint"].endswith("2222")  # replaced
+        h = tenant()["headers"]
+        client.post("/settings/credentials", headers=h,
+                    json={"provider": "openai", "api_key": "sk-one-1111"})
+        client.post("/settings/credentials", headers=h,
+                    json={"provider": "openai", "api_key": "sk-two-2222"})
+        creds = client.get("/settings/credentials", headers=h).json()
+        openai = [c for c in creds if c["provider"] == "openai"]
+        assert len(openai) == 1 and openai[0]["hint"].endswith("2222")  # replaced
 
 
+@pytest.mark.real_auth
 def test_unsupported_provider_rejected():
     with TestClient(app) as client:
-        acct = _account(client)
-        h = {"Authorization": f"Bearer {acct['api_key']}"}
-        with auth_enabled(True):
-            r = client.post("/settings/credentials", headers=h,
-                            json={"provider": "skynet", "api_key": "x"})
-            assert r.status_code == 422
+        r = client.post("/settings/credentials", headers=tenant()["headers"],
+                        json={"provider": "skynet", "api_key": "x"})
+        assert r.status_code == 422
 
 
+@pytest.mark.real_auth
 def test_credentials_are_tenant_isolated():
     with TestClient(app) as client:
-        a = _account(client)
-        b = _account(client)
-        ha = {"Authorization": f"Bearer {a['api_key']}"}
-        hb = {"Authorization": f"Bearer {b['api_key']}"}
-        with auth_enabled(True):
-            cid = client.post("/settings/credentials", headers=ha,
-                              json={"provider": "groq", "api_key": "gsk-aaaa"}).json()["id"]
-            # B sees none of A's credentials and can't delete them.
-            assert client.get("/settings/credentials", headers=hb).json() == []
-            assert client.delete(f"/settings/credentials/{cid}", headers=hb).status_code == 404
-            assert client.delete(f"/settings/credentials/{cid}", headers=ha).json()["deleted"] == cid
+        ha = tenant()["headers"]
+        hb = tenant()["headers"]
+        cid = client.post("/settings/credentials", headers=ha,
+                          json={"provider": "groq", "api_key": "gsk-aaaa"}).json()["id"]
+        # B sees none of A's credentials and can't delete them.
+        assert client.get("/settings/credentials", headers=hb).json() == []
+        assert client.delete(f"/settings/credentials/{cid}", headers=hb).status_code == 404
+        assert client.delete(f"/settings/credentials/{cid}", headers=ha).json()["deleted"] == cid
 
 
 # --- routes -------------------------------------------------------------------
 
 
+@pytest.mark.real_auth
 def test_routes_default_then_override_then_revert():
     with TestClient(app) as client:
-        acct = _account(client)
-        h = {"Authorization": f"Bearer {acct['api_key']}"}
-        with auth_enabled(True):
-            # Default (env) routes report source=default.
-            routes = {r["task_class"]: r for r in client.get("/settings/routes", headers=h).json()}
-            assert routes["reasoning"]["source"] == "default"
+        h = tenant()["headers"]
+        # Default (env) routes report source=default.
+        routes = {r["task_class"]: r for r in client.get("/settings/routes", headers=h).json()}
+        assert routes["reasoning"]["source"] == "default"
 
-            # Set an override.
-            put = client.put("/settings/routes", headers=h, json={
-                "task_class": "reasoning", "provider": "anthropic", "model": "claude-opus-4-8"})
-            assert put.status_code == 200 and put.json()["source"] == "override"
-            routes = {r["task_class"]: r for r in client.get("/settings/routes", headers=h).json()}
-            assert routes["reasoning"] == {
-                "task_class": "reasoning", "provider": "anthropic",
-                "model": "claude-opus-4-8", "source": "override"}
+        # Set an override.
+        put = client.put("/settings/routes", headers=h, json={
+            "task_class": "reasoning", "provider": "anthropic", "model": "claude-opus-4-8"})
+        assert put.status_code == 200 and put.json()["source"] == "override"
+        routes = {r["task_class"]: r for r in client.get("/settings/routes", headers=h).json()}
+        assert routes["reasoning"] == {
+            "task_class": "reasoning", "provider": "anthropic",
+            "model": "claude-opus-4-8", "source": "override"}
 
-            # Clear -> back to default.
-            client.delete("/settings/routes/reasoning", headers=h)
-            routes = {r["task_class"]: r for r in client.get("/settings/routes", headers=h).json()}
-            assert routes["reasoning"]["source"] == "default"
+        # Clear -> back to default.
+        client.delete("/settings/routes/reasoning", headers=h)
+        routes = {r["task_class"]: r for r in client.get("/settings/routes", headers=h).json()}
+        assert routes["reasoning"]["source"] == "default"
 
 
 # --- gateway integration ------------------------------------------------------
 
 
+@pytest.mark.real_auth
 def test_gateway_uses_stored_credentials_and_route():
     with TestClient(app) as client:
-        acct = _account(client)
+        acct = tenant()
         org = acct["org_id"]
-        h = {"Authorization": f"Bearer {acct['api_key']}"}
-        with auth_enabled(True):
-            client.post("/settings/credentials", headers=h,
-                        json={"provider": "anthropic", "api_key": "sk-live-key"})
-            client.put("/settings/routes", headers=h, json={
-                "task_class": "reasoning", "provider": "anthropic", "model": "claude-opus-4-8"})
+        h = acct["headers"]
+        client.post("/settings/credentials", headers=h,
+                    json={"provider": "anthropic", "api_key": "sk-live-key"})
+        client.put("/settings/routes", headers=h, json={
+            "task_class": "reasoning", "provider": "anthropic", "model": "claude-opus-4-8"})
 
         # Org-scoped gateway resolves the stored route (it has a key, so no mock fallback).
         gw = LLMGateway(org_id=org)

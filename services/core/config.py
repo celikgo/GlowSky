@@ -63,12 +63,21 @@ class Settings(BaseSettings):
     # If unset, a deterministic DEV key is derived — fine for local dev, NEVER production.
     secret_key: str | None = None
 
-    # --- Auth & tenancy ---
-    # When False (default), the API runs in single-tenant dev mode: every request
-    # resolves to a built-in local principal (local-org/owner) — preserving Phase 0's
-    # zero-setup, offline ergonomics. When True, endpoints require a bearer API key
-    # (minted via POST /auth/signup) and all data is scoped to the key's org.
-    auth_enabled: bool = False
+    # --- Nakitte platform auth (the sole auth provider) ---
+    # Every request in every environment authenticates with a nakitte-carbon-auth access
+    # token: an RS256 JWT verified against that service's JWKS endpoint. Identity (user /
+    # tenant / roles) comes from the token; Glowsky JIT-provisions a local org+user mirror
+    # so its tenant-scoped persistence and FKs resolve. There is no local identity store
+    # and no auth bypass — dev points GLOWSKY_NAKITTE_JWKS_URL at a running carbon-auth.
+    nakitte_jwks_url: str = "http://localhost:8081/.well-known/jwks.json"
+    nakitte_jwt_issuer: str | None = None  # enforced as the `iss` claim when set
+    nakitte_jwt_audience: str = "carbon-platform"
+
+    # --- Docking receptor confinement ---
+    # The `dock` tool only accepts receptor files resolving under this directory, so a
+    # caller-supplied receptor_ref can never traverse the worker filesystem (path-oracle
+    # / arbitrary-read guard). Matches the ./examples/docking mount in the docking image.
+    docking_receptors_dir: str = "examples/docking"
 
     # --- CORS ---
     # Origins allowed to call the API from a browser/webview. The desktop app's webview

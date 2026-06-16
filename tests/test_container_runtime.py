@@ -45,6 +45,18 @@ def test_sandbox_command_has_isolation_flags():
     for flag in ["--rm", "--read-only", "--cap-drop ALL", "--security-opt no-new-privileges",
                  "--pids-limit", "--memory 512m", "--cpus 2", "--network none", "--user 65534:65534"]:
         assert flag in joined
+    # The image is positional after an explicit `--` terminator (no flag-injection via image ref).
+    assert argv[-2:] == ["--", "img:1"]
+
+
+def test_network_fails_closed_for_non_none_egress():
+    """H2: ALLOWLIST has no proxy yet, so it must NOT fall through to the default bridge —
+    every egress class is denied the network until a governed proxy ships."""
+    rt = ContainerRuntime(runner=fake_runner({"x": 1}))
+    res = Resources(cpu=1, mem_mb=256, timeout_s=10)
+    for egress in (Egress.NONE, Egress.ALLOWLIST):
+        argv = rt.build_command("img:1", res, egress, "65534:65534")
+        assert "--network" in argv and argv[argv.index("--network") + 1] == "none", egress
 
 
 def test_run_passes_args_on_stdin_and_returns_result():

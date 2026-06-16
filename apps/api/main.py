@@ -1,8 +1,9 @@
 """Glowsky API — the vertical slice surface (Phase 0 + Phase 1 auth/tenancy).
 
+Every endpoint authenticates with a nakitte-carbon-auth platform JWT (see deps.py).
+
 Endpoints:
   GET  /health                  liveness + resolved (secret-free) model routes
-  POST /auth/signup             create an org + user, mint a bearer API key (once)
   GET  /auth/me                 the resolved principal for the request
   POST /projects                create a project (tenant-scoped)
   GET  /projects                list projects in the caller's org
@@ -59,8 +60,6 @@ from apps.api.schemas import (
     ProjectResponse,
     RouteResponse,
     RouteUpsert,
-    SignupRequest,
-    SignupResponse,
     ToolExecuteRequest,
     ValidateRequest,
 )
@@ -72,8 +71,9 @@ from services.chemistry.conformers import conformer_molblock
 from services.chemistry.properties import profile
 from services.chemistry.validation import validate_and_canonicalize
 from services.reporting import build_markdown, notebook_json
-from services.core.auth import Principal, audit, signup
+from services.core.auth import Principal, audit
 from services.core.config import get_settings
+from services.core.nakitte_auth import resolve_nakitte_token
 from services.core.crypto import encrypt, mask
 from services.core.db import init_db, session_scope
 from services.core.models import (
@@ -136,21 +136,6 @@ def health() -> dict:
 
 
 # --- Auth & tenancy ------------------------------------------------------------
-
-@app.post("/auth/signup", response_model=SignupResponse, status_code=201)
-def auth_signup(req: SignupRequest) -> SignupResponse:
-    """Create an org + user and mint a bearer API key. Open even when auth is enabled —
-    it's how a new tenant obtains its first credential. The key is returned exactly once."""
-    with session_scope() as s:
-        try:
-            principal, token = signup(s, req.email.strip().lower(), req.org_name.strip())
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return SignupResponse(
-            org_id=principal.org_id, user_id=principal.user_id,
-            email=principal.email or req.email, api_key=token,
-        )
-
 
 @app.get("/auth/me", response_model=PrincipalResponse)
 def auth_me(principal: Principal = Depends(current_principal)) -> PrincipalResponse:
@@ -641,11 +626,18 @@ def tools() -> dict:
 
 
 @app.post("/tools/{name}")
-def execute_tool(name: str, req: ToolExecuteRequest) -> dict:
-    """Run any registered tool through the execution service (cache + firewall + provenance)."""
+def execute_tool(
+    name: str, req: ToolExecuteRequest, principal: Principal = Depends(require_write)
+) -> dict:
+    """Run any registered tool through the execution service (cache + firewall + provenance).
+
+    Auth-gated: executing a tool spends compute (and can launch a sandboxed container or
+    a docking subprocess), so it requires a writer principal and is scoped to their org.
+    """
     executor: ToolExecutionService = app.state.executor
+    ctx = ExecutionContext(org_id=principal.org_id)
     try:
-        result = executor.execute(name, req.args, ExecutionContext(), seed=req.seed)
+        result = executor.execute(name, req.args, ctx, seed=req.seed)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ToolExecutionError as exc:
@@ -658,30 +650,37 @@ def execute_tool(name: str, req: ToolExecuteRequest) -> dict:
 # --- Slow path: submit jobs, stream/poll results -------------------------------
 
 @app.post("/jobs")
-def submit_job(req: JobSubmitRequest) -> dict:
+def submit_job(
+    req: JobSubmitRequest, principal: Principal = Depends(require_write)
+) -> dict:
     """Submit a slow-path tool call (e.g. conformers, docking). Returns a job_id to
-    stream over WS /jobs/{id}/stream or poll via GET /jobs/{id}."""
+    stream over WS /jobs/{id}/stream or poll via GET /jobs/{id}. Auth-gated + org-scoped."""
     executor: ToolExecutionService = app.state.executor
+    ctx = ExecutionContext(org_id=principal.org_id)
     try:
-        job_id = executor.submit(req.tool, req.args, ExecutionContext(), seed=req.seed)
+        job_id = executor.submit(req.tool, req.args, ctx, seed=req.seed)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"job_id": job_id}
 
 
 @app.post("/jobs/batch")
-def submit_batch(req: BatchSubmitRequest) -> dict:
-    """Submit a tool over many inputs (library-scale). Per-item results stream live."""
+def submit_batch(
+    req: BatchSubmitRequest, principal: Principal = Depends(require_write)
+) -> dict:
+    """Submit a tool over many inputs (library-scale). Per-item results stream live.
+    Auth-gated + org-scoped."""
     executor: ToolExecutionService = app.state.executor
+    ctx = ExecutionContext(org_id=principal.org_id)
     try:
-        job_id = executor.submit_batch(req.tool, req.items, ExecutionContext())
+        job_id = executor.submit_batch(req.tool, req.items, ctx)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"job_id": job_id}
 
 
 @app.get("/jobs/{job_id}")
-def get_job(job_id: str) -> dict:
+def get_job(job_id: str, principal: Principal = Depends(current_principal)) -> dict:
     job = get_store().get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"unknown job: {job_id}")
@@ -689,12 +688,20 @@ def get_job(job_id: str) -> dict:
 
 
 @app.websocket("/jobs/{job_id}/stream")
-async def stream_job(ws: WebSocket, job_id: str) -> None:
+async def stream_job(ws: WebSocket, job_id: str, token: str | None = None) -> None:
     """Relay the job's event stream live, then close on the terminal event.
 
     Streams by reading the append-only event log incrementally — identical behaviour
-    whether the job ran on a Celery worker (Redis) or eagerly in-process."""
+    whether the job ran on a Celery worker (Redis) or eagerly in-process. Auth-gated:
+    when auth is enabled the `token` query param (a nakitte JWT or Glowsky key) must
+    resolve, mirroring the execution endpoints; an invalid token gets a `failed` frame."""
     await ws.accept()
+    try:
+        _ws_principal(token)
+    except ValueError as exc:
+        await ws.send_json({"type": "failed", "error": str(exc)})
+        await ws.close()
+        return
     store = get_store()
     sent = 0
     waited = 0.0
@@ -722,12 +729,16 @@ async def stream_job(ws: WebSocket, job_id: str) -> None:
 
 
 @app.post("/molecules/validate")
-def validate(req: ValidateRequest) -> dict:
+def validate(
+    req: ValidateRequest, principal: Principal = Depends(current_principal)
+) -> dict:
     return validate_and_canonicalize(req.smiles).as_dict()
 
 
 @app.post("/molecules/profile")
-def profile_molecule(req: ProfileRequest) -> dict:
+def profile_molecule(
+    req: ProfileRequest, principal: Principal = Depends(current_principal)
+) -> dict:
     result = validate_and_canonicalize(req.smiles)
     if not result.valid:
         raise HTTPException(status_code=422, detail=f"invalid molecule: {result.error}")
@@ -739,7 +750,9 @@ def profile_molecule(req: ProfileRequest) -> dict:
 
 
 @app.post("/molecules/conformer")
-def molecule_conformer(req: ProfileRequest) -> dict:
+def molecule_conformer(
+    req: ProfileRequest, principal: Principal = Depends(current_principal)
+) -> dict:
     """Embed a single low-energy 3D conformer for the desktop 3D viewer.
 
     Firewalls the SMILES first (same path as profile), then returns an MDL MOL block
@@ -760,7 +773,7 @@ def molecule_conformer(req: ProfileRequest) -> dict:
 
 
 @app.get("/examples/docking/sample")
-def docking_sample() -> dict:
+def docking_sample(principal: Principal = Depends(current_principal)) -> dict:
     """A real protein–ligand complex (RCSB 1HSG) for demoing the pose viewer.
 
     This is experimental crystallographic data shipped as a sample so the receptor +
@@ -835,3 +848,69 @@ def _persist(result, principal: Principal, project_id: str | None) -> str:
         audit(s, principal, "run.design", "agent_run", run.id,
               {"project_id": project_id, "n_candidates": len(result.candidates)})
         return run.id
+
+
+def _ws_principal(token: str | None) -> Principal:
+    """Resolve a principal for a WebSocket from a platform JWT passed as a query param
+    (a WebSocket can't carry an Authorization header).
+
+    Mirrors ``current_principal``: the token must resolve, else ``ValueError`` (relayed
+    to the client as an error event).
+    """
+    if not token:
+        raise ValueError("missing token")
+    with session_scope() as s:
+        principal = resolve_nakitte_token(s, token)
+    if principal is None:
+        raise ValueError("invalid token")
+    return principal
+
+
+@app.websocket("/agent/design/stream")
+async def stream_design(ws: WebSocket) -> None:
+    """Run the agentic design loop, streaming each milestone live to the Composer.
+
+    Protocol: client opens the socket, then sends one init frame
+    ``{goal, seed_smiles, project_id?, persist?, token?}``. The server relays the
+    orchestrator's events (started / plan / trace / candidate / ranked / explanation)
+    as they happen, then a terminal ``complete`` frame carrying the full result (with
+    ``run_id`` when persisted), or an ``error`` frame. The socket closes on either.
+    """
+    await ws.accept()
+    try:
+        init = await ws.receive_json()
+    except WebSocketDisconnect:
+        return
+
+    async def send(event: dict) -> None:
+        await ws.send_json(event)
+
+    try:
+        principal = _ws_principal(init.get("token"))
+        goal = (init.get("goal") or "").strip()
+        seed = (init.get("seed_smiles") or "").strip()
+        if not goal or not seed:
+            raise ValueError("goal and seed_smiles are required")
+        project_id = init.get("project_id")
+        persist = bool(init.get("persist", True))
+
+        # Validate project ownership up front (tenant isolation) before any compute.
+        if project_id is not None:
+            with session_scope() as s:
+                load_project(s, project_id, principal)
+
+        # Scope the gateway to the caller's org so their BYO-LLM keys/routes apply.
+        orch = DesignOrchestrator(LLMGateway(org_id=principal.org_id), app.state.executor)
+        ctx = ExecutionContext(org_id=principal.org_id, project_id=project_id)
+        result = await orch.run(goal, seed, ctx, emit=send)
+
+        if persist:
+            result.run_id = _persist(result, principal, project_id)
+        await send({"type": "complete", "result": result.model_dump()})
+    except ValueError as exc:
+        await send({"type": "error", "error": str(exc)})
+    except WebSocketDisconnect:
+        return
+    except Exception as exc:  # pragma: no cover - defensive: surface, don't hang the client
+        await send({"type": "error", "error": f"design failed: {exc}"})
+    await ws.close()

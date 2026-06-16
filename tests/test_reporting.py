@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import json
-import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 
 from apps.api.main import app
 from services.reporting import build_markdown, build_notebook, notebook_json
-from tests.test_auth import auth_enabled
+from tests.conftest import tenant
 
 _RUN = {
     "id": "run-123",
@@ -104,18 +104,14 @@ def test_export_endpoints_produce_notebook_and_markdown():
         assert bad.status_code == 422
 
 
+@pytest.mark.real_auth
 def test_run_export_is_tenant_isolated():
     with TestClient(app) as client:
-        a = client.post("/auth/signup",
-                        json={"email": f"r-{uuid.uuid4().hex[:8]}@lab.edu", "org_name": "A"}).json()
-        b = client.post("/auth/signup",
-                        json={"email": f"r-{uuid.uuid4().hex[:8]}@lab.edu", "org_name": "B"}).json()
-        with auth_enabled(True):
-            run_id = client.post("/agent/design",
-                                 headers={"Authorization": f"Bearer {a['api_key']}"},
-                                 json={"goal": "make 4 analogs", "seed_smiles": "c1ccccc1C(=O)O"},
-                                 ).json()["run_id"]
-            # Org B cannot read or export org A's run.
-            hb = {"Authorization": f"Bearer {b['api_key']}"}
-            assert client.get(f"/runs/{run_id}", headers=hb).status_code == 404
-            assert client.get(f"/runs/{run_id}/export", headers=hb).status_code == 404
+        ha = tenant()["headers"]
+        hb = tenant()["headers"]
+        run_id = client.post("/agent/design", headers=ha,
+                             json={"goal": "make 4 analogs", "seed_smiles": "c1ccccc1C(=O)O"},
+                             ).json()["run_id"]
+        # Org B cannot read or export org A's run.
+        assert client.get(f"/runs/{run_id}", headers=hb).status_code == 404
+        assert client.get(f"/runs/{run_id}/export", headers=hb).status_code == 404

@@ -13,10 +13,35 @@ export class ApiError extends Error {
   }
 }
 
+// --- auth: nakitte-carbon-auth access token (the only credential) -------------
+// Every backend call carries a platform JWT. The desktop has no login flow yet, so
+// the token is pasted in Settings and persisted locally; an env default (VITE_AUTH_TOKEN)
+// is a convenience for dev. Sent as `Authorization: Bearer` on HTTP and `?token=`/init
+// frame on WebSockets (a WS handshake can't carry a header).
+const TOKEN_KEY = "glowsky_token";
+
+export function getToken(): string {
+  return localStorage.getItem(TOKEN_KEY) ?? (import.meta.env.VITE_AUTH_TOKEN as string | undefined) ?? "";
+}
+
+export function setToken(token: string): void {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+function authHeaders(): Record<string, string> {
+  const t = getToken();
+  return t ? { authorization: `Bearer ${t}` } : {};
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "content-type": "application/json" },
     ...init,
+    headers: {
+      "content-type": "application/json",
+      ...authHeaders(),
+      ...((init?.headers as Record<string, string>) ?? {}),
+    },
   });
   if (!res.ok) {
     let detail = res.statusText;
@@ -219,6 +244,19 @@ export interface RouteInfo {
   source: "override" | "default";
 }
 
+// --- design streaming (WebSocket) --------------------------------------------
+
+/** Live milestones from the agentic design loop, in the order the server emits them. */
+export interface DesignStreamHandlers {
+  onPlan?: (parentSmiles: string, plan: DesignPlan) => void;
+  onCandidate?: (candidate: Candidate) => void;
+  onTrace?: (entry: TraceEntry) => void;
+  onRanked?: (order: string[]) => void;
+  onExplanation?: (text: string) => void;
+  onComplete?: (result: DesignResult) => void;
+  onError?: (message: string) => void;
+}
+
 // --- endpoints ---------------------------------------------------------------
 
 export const api = {
@@ -279,6 +317,63 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ goal, seed_smiles, persist: true }),
     }),
+
+  /**
+   * Run the design loop over a WebSocket, invoking `h` as each milestone streams in
+   * (plan → candidate… → ranked → explanation → complete). Returns a cancel function
+   * that closes the socket. The token rides the init frame (a WS can't send a header).
+   */
+  streamDesign(goal: string, seed_smiles: string, h: DesignStreamHandlers): () => void {
+    const url = `${BASE.replace(/^http/i, "ws")}/agent/design/stream`;
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(url);
+    } catch {
+      h.onError?.("Could not open a connection to the backend. Is `make run` up?");
+      return () => {};
+    }
+    ws.onopen = () =>
+      ws.send(JSON.stringify({ goal, seed_smiles, persist: true, token: getToken() }));
+    ws.onmessage = (ev) => {
+      let m: { type: string; [k: string]: unknown };
+      try {
+        m = JSON.parse(ev.data as string);
+      } catch {
+        return;
+      }
+      switch (m.type) {
+        case "plan":
+          h.onPlan?.(m.parent_smiles as string, m.plan as DesignPlan);
+          break;
+        case "candidate":
+          h.onCandidate?.(m.candidate as Candidate);
+          break;
+        case "trace":
+          h.onTrace?.(m.record as TraceEntry);
+          break;
+        case "ranked":
+          h.onRanked?.(m.order as string[]);
+          break;
+        case "explanation":
+          h.onExplanation?.(m.text as string);
+          break;
+        case "complete":
+          h.onComplete?.(m.result as DesignResult);
+          break;
+        case "error":
+          h.onError?.(m.error as string);
+          break;
+      }
+    };
+    ws.onerror = () => h.onError?.("Could not reach the backend. Is `make run` up?");
+    return () => {
+      try {
+        ws.close();
+      } catch {
+        /* already closing */
+      }
+    };
+  },
   profile: (smiles: string) =>
     request<{ canonical_smiles: string; inchikey: string; properties: Record<string, number | boolean> }>(
       "/molecules/profile",

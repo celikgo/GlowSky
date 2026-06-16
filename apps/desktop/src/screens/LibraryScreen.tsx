@@ -215,15 +215,13 @@ export function LibraryScreen() {
               <span className="library__spacer" />
               <span className="field__label">Export</span>
               {FORMATS.map((f) => (
-                <a
+                <button
                   key={f}
-                  className="chip"
-                  href={api.exportLibraryUrl(libraryId, f)}
-                  target="_blank"
-                  rel="noreferrer"
+                  className="chip chip--btn"
+                  onClick={() => api.downloadLibrary(libraryId, f).catch((e) => setError(errMsg(e)))}
                 >
                   ⬇ {f}
-                </a>
+                </button>
               ))}
             </div>
           </section>

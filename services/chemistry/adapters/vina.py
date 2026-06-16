@@ -42,12 +42,16 @@ class VinaDockingBackend:
         exhaustiveness: int = 8,
         num_modes: int = 9,
         seed: int = 42,
+        receptors_dir: str = "examples/docking",
     ) -> None:
         self.vina_bin = vina_bin
         self.obabel_bin = obabel_bin
         self.exhaustiveness = exhaustiveness
         self.num_modes = num_modes
         self.seed = seed
+        # Receptors must resolve under this root — a caller-supplied receptor_ref can
+        # never traverse the worker filesystem (path-existence oracle / arbitrary read).
+        self.receptors_dir = receptors_dir
 
     @property
     def name(self) -> str:
@@ -155,8 +159,24 @@ class VinaDockingBackend:
         )
         return pdbqt_path
 
+    def _resolve_receptor(self, receptor_ref: str) -> str:
+        """Resolve receptor_ref under the allowed receptors root, or reject it.
+
+        Rejection happens BEFORE any filesystem existence check, so an out-of-bounds path
+        can't be used as an existence oracle and Vina is never pointed at an arbitrary file.
+        """
+        root = os.path.realpath(self.receptors_dir)
+        target = os.path.realpath(receptor_ref)
+        if target != root and not target.startswith(root + os.sep):
+            raise ValueError(
+                f"receptor_ref must resolve under the receptors directory ({self.receptors_dir!r}); "
+                f"refusing path outside it"
+            )
+        return target
+
     def dock(self, ligand_smiles: str, receptor_ref: str, pocket: Pocket) -> dict:
         self._require_tools()
+        receptor_ref = self._resolve_receptor(receptor_ref)
         if not os.path.exists(receptor_ref):
             raise BackendNotConfigured(
                 f"receptor not found: {receptor_ref!r}. Provide a prepared receptor .pdbqt."

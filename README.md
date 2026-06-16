@@ -2,7 +2,7 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-113%20passing-brightgreen.svg)](tests/)
 [![Status: Phase 0](https://img.shields.io/badge/status-Phase%200%20scaffold-orange.svg)](docs/09-roadmap.md)
 [![Code style: RDKit](https://img.shields.io/badge/chemistry-RDKit-26a69a.svg)](https://www.rdkit.org/)
 
@@ -54,14 +54,18 @@ make demo                     # run a sample design loop, print results + proven
 make run                      # start the API at http://localhost:8000  (/docs for Swagger)
 ```
 
-**Try the design loop** (offline mock by default):
+**Try the design loop** (offline mock LLM by default). Every API call needs a
+nakitte-carbon-auth JWT (see **Auth & multi-tenancy** below); export one as `$TOKEN` first:
 
 ```bash
-curl -s localhost:8000/agent/design -H 'content-type: application/json' -d '{
+curl -s localhost:8000/agent/design \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{
   "goal": "Make 12 analogs with MW<300, logP 1-3, no PAINS, drug-like",
   "seed_smiles": "c1ccccc1C(=O)O"
 }' | python -m json.tool
 ```
+
+> `make demo` runs the same loop **in-process** (no HTTP, no token) for a zero-setup taste.
 
 **Use your own LLM:** copy `.env.example` → `.env`, set a key (e.g.
 `GLOWSKY_ANTHROPIC_API_KEY`) and route (e.g. `GLOWSKY_ROUTE_REASONING=anthropic/claude-opus-4-8`).
@@ -116,6 +120,15 @@ curl -s localhost:8000/tools/admet_ai -H 'content-type: application/json' \
 This is how the ADMET seam (`predict_admet`, docs/13 §10) is satisfied by a real model
 with **zero Glowsky code changes** — just an image + a `glowsky-tool.yaml`.
 
+**The tool seam is domain-agnostic — it isn't only chemistry.** `examples/tools/` also
+ships the nakitte-carbon **ULD-line accelerator products** as sandboxed `logistics` tools,
+proving any team's model plugs in the same way: `cargo_dimensioning` (IATA volumetric +
+chargeable weight — the deterministic billing core; AI measures upstream, ADR-140),
+`damage_detect` (the deterministic triage gate over a vision model's detections —
+classify → pending_review → human-confirm), and `apron_energy` (apron GSE energy + grid
+CO₂ projected from ULD movements, ADR-139). All pure-stdlib, deterministic, `--network none`.
+Build with `make tools-thy`; they register exactly like a built-in tool.
+
 ### Run the whole stack on Docker
 
 ```bash
@@ -166,7 +179,7 @@ curl -s localhost:8000/tools/dock -H 'content-type: application/json' -d '{"args
 | **BYO-LLM gateway** | `services/llm_gateway/` | LiteLLM-backed multi-provider access + offline mock; task-class routing; keys resolved only at call time, never logged |
 | **Agent orchestrator** | `services/agent/orchestrator.py` | Plan (LLM) → generate → profile → filter → rank → synthesize (LLM); every chemistry call routes through the execution service, with a full provenance trace |
 | **API + persistence** | `apps/api/` + `services/core/` | FastAPI endpoints incl. generic `POST /tools/{name}`; runs + molecules stored with provenance (`origin_run_id`) in SQLite |
-| **Auth & tenancy** *(Phase 1)* | `services/core/auth.py`, `apps/api/deps.py` | Org/user/membership/project model, bearer **API-key** auth (hash-at-rest), tenant-scoped projects/runs/molecules, and an audit trail — all gated behind `GLOWSKY_AUTH_ENABLED` so dev mode stays zero-setup |
+| **Auth & tenancy** *(Phase 1)* | `services/core/nakitte_auth.py`, `apps/api/deps.py` | **nakitte-carbon-auth JWT** is the sole credential (RS256, JWKS-verified) — no local key store, no bypass; org/user/membership tenant is JIT-provisioned from the token; tenant-scoped projects/runs/molecules + audit trail; every tool/job/molecule/design endpoint covered |
 | **Real ADMET/docking backends** *(Phase 1)* | `services/chemistry/adapters/admet_rdkit.py`, `adapters/vina.py` | Offline **RDKit-QSPR** ADMET (ESOL solubility + BBB rule + lipophilicity heuristics, every value carries method/confidence/applicability-domain) and an **AutoDock Vina** docking wrapper that surfaces real per-pose 3D geometry (parsed from Vina's output `.pdbqt`, not just scores) — both adapter-gated (`GLOWSKY_ADMET_BACKEND`, `GLOWSKY_DOCKING_BACKEND`); the default stays "not configured" so nothing is ever fabricated |
 | **Library + SMILES/CSV/SDF I/O** *(Phase 1)* | `services/chemistry/io.py`, `apps/api/main.py` | Tenant-scoped libraries; import/export in SMILES/CSV/SDF (every structure firewalled, InChIKey-deduped with fill-only property merge on re-import (fills empty fields, never overwrites), bad rows reported not fatal); molecule diff with per-descriptor deltas |
 | **Migrations** *(Phase 1)* | `migrations/`, `tests/test_migrations.py` | Alembic as schema source of truth; a drift-guard test fails if models and migrations diverge |
@@ -179,29 +192,31 @@ Phase 1 (in progress) adds the auth/tenancy spine (done — see below), and next
 slow-path Celery/Redis queue, real ADMET/docking backends, WebSocket streaming polish,
 2D/3D viewers (RDKit-JS 2D + an interactive 3Dmol.js conformer viewer — done), and notebook export.
 
-**Auth & multi-tenancy (Phase 1).** Off by default — every request resolves to a built-in
-local owner, so the Phase 0 commands above need no token. Flip `GLOWSKY_AUTH_ENABLED=true`
-to require a per-org **bearer API key**; data is then isolated per tenant.
+**Auth & multi-tenancy.** Identity is owned by **nakitte-carbon-auth** — Glowsky has no
+local credential store and no auth bypass. **Every** request, in every environment,
+presents a platform **JWT** (`Authorization: Bearer <jwt>`; RS256, verified against the
+carbon-auth JWKS). The token's `sub`/`tenant_id`/`roles` become the principal, the tenant
+is **JIT-provisioned** into Glowsky's tables on first sight, and all data is isolated per
+tenant. Point `GLOWSKY_NAKITTE_JWKS_URL` at a running carbon-auth — for local dev too (see
+`.env.example`). Roles map to write/read: `owner` → owner, read-only platform roles
+(`viewer`/`auditor`) → viewer, any other role → editor.
 
 ```bash
-# Mint an org + API key (the key is shown exactly once):
-KEY=$(curl -s localhost:8000/auth/signup -H 'content-type: application/json' \
-  -d '{"email":"maya@lab.edu","org_name":"Maya Lab"}' \
-  | python -c 'import sys,json;print(json.load(sys.stdin)["api_key"])')
+# Get an access token from nakitte-carbon-auth (see that service's README), then:
+TOKEN=...   # a carbon-auth access JWT for your tenant
 
-# Create a project and run a design scoped to it (only this org can see it):
-PID=$(curl -s localhost:8000/projects -H "authorization: Bearer $KEY" \
+# Create a project and run a design scoped to it (only this tenant can see it):
+PID=$(curl -s localhost:8000/projects -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{"name":"Kinase series"}' \
   | python -c 'import sys,json;print(json.load(sys.stdin)["id"])')
-curl -s localhost:8000/agent/design -H "authorization: Bearer $KEY" \
+curl -s localhost:8000/agent/design -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
   -d "{\"goal\":\"make 8 analogs, MW<300, no PAINS\",\"seed_smiles\":\"c1ccccc1C(=O)O\",\"project_id\":\"$PID\"}"
-curl -s localhost:8000/projects/$PID/runs -H "authorization: Bearer $KEY"   # provenance, scoped
+curl -s localhost:8000/projects/$PID/runs -H "authorization: Bearer $TOKEN"   # provenance, scoped
 ```
 
-> Bearer API keys are the Phase 1 auth primitive (fully testable headlessly). Email/OAuth
-> (Google/GitHub/ORCID) sign-in arrives with the frontend; the org/membership model is
-> already in place for it.
+> WebSocket endpoints take the token as a query param (`?token=…`) since a WS handshake
+> can't carry an Authorization header.
 
 **Database migrations (Alembic).** SQLite dev/test bootstraps tables via `create_all`,
 but **Alembic is the source of truth** for schema evolution — required for Postgres /

@@ -787,6 +787,16 @@
   border-radius: var(--radius-pill);
   animation: spin 0.7s linear infinite;
 }
+/* Inline next to a heading (live-streaming indicator) rather than inside a button. */
+.spinner--inline {
+  display: inline-block;
+  vertical-align: middle;
+  width: 13px;
+  height: 13px;
+  margin-left: 8px;
+  border-color: rgba(120, 130, 145, 0.4);
+  border-top-color: var(--accent, #1d9bf0);
+}
 @keyframes spin {
   to {
     transform: rotate(360deg);

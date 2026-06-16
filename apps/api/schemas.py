@@ -45,19 +45,6 @@ class DesignRequest(BaseModel):
 # --- Auth & tenancy -----------------------------------------------------------
 
 
-class SignupRequest(BaseModel):
-    email: str = Field(..., examples=["maya@lab.edu"])
-    org_name: str = Field("Personal", examples=["Maya's Lab"])
-
-
-class SignupResponse(BaseModel):
-    org_id: str
-    user_id: str
-    email: str
-    # Plaintext API key — returned exactly once. Send as `Authorization: Bearer <key>`.
-    api_key: str
-
-
 class PrincipalResponse(BaseModel):
     user_id: str
     org_id: str

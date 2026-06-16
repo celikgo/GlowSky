@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import {
   api,
   ApiError,
+  getToken,
+  setToken,
   type Credential,
   type ProviderInfo,
   type RouteInfo,
@@ -27,6 +29,10 @@ export function SettingsScreen() {
   const [keyDraft, setKeyDraft] = useState<Record<string, string>>({});
   const [urlDraft, setUrlDraft] = useState<Record<string, string>>({});
   const [routeDraft, setRouteDraft] = useState<Record<string, { provider: string; model: string }>>({});
+
+  // platform access token (the only credential the backend accepts)
+  const [tokenDraft, setTokenDraft] = useState(getToken());
+  const [tokenSaved, setTokenSaved] = useState(getToken());
 
   async function load() {
     try {
@@ -94,9 +100,57 @@ export function SettingsScreen() {
     }
   }
 
+  function saveToken() {
+    const t = tokenDraft.trim();
+    setToken(t);
+    setTokenSaved(t);
+    load(); // re-fetch now that requests are authenticated
+  }
+
+  function clearToken() {
+    setToken("");
+    setTokenDraft("");
+    setTokenSaved("");
+  }
+
   return (
     <div className="settings">
       {error ? <div className="design__error">{error}</div> : null}
+
+      {/* Platform access token — authenticates every request to the backend */}
+      <div className="section-title">Platform access</div>
+      <p className="settings__note">
+        Glowsky authenticates with a <strong>nakitte-carbon-auth</strong> access token (JWT) —
+        the only credential the backend accepts. Paste one to connect; it's stored locally in
+        this app and sent with every request.
+      </p>
+      <section className="card settings__group">
+        <div className="settings__row">
+          <div className="settings__rowlabel">
+            <span className="settings__provider">Access token</span>
+            <span className={`chip ${tokenSaved ? "chip--success" : ""}`}>
+              {tokenSaved ? "connected" : "not set"}
+            </span>
+          </div>
+          <div className="settings__addline">
+            <input
+              className="input mono"
+              type="password"
+              placeholder="Bearer JWT from nakitte-carbon-auth"
+              value={tokenDraft}
+              onChange={(e) => setTokenDraft(e.target.value)}
+            />
+            <button className="btn settings__btn" onClick={saveToken} disabled={!tokenDraft.trim()}>
+              Save
+            </button>
+            {tokenSaved ? (
+              <button className="btn btn--ghost settings__btn" onClick={clearToken}>
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </section>
 
       {/* Provider keys */}
       <div className="section-title">Provider keys (BYO-LLM)</div>

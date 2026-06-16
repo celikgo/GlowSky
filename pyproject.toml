@@ -18,6 +18,7 @@ dependencies = [
     "pyyaml>=6",
     "alembic>=1.13",
     "cryptography>=42",
+    "pyjwt[crypto]>=2.8",
 ]
 
 # pandas is used by exported notebooks (and to test their reproducibility), not by the
@@ -36,3 +37,6 @@ include = ["apps*", "services*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "real_auth: lift the default principal override and exercise real nakitte-JWT auth",
+]

@@ -29,6 +29,11 @@ tool-example:        ## Build the example container tool image
 tool-admet:          ## Build the real ADMET-AI container tool (large: torch; ~minutes)
 	docker build -t glowsky-tool-admet-ai:0.1.0 examples/tools/admet_ai
 
+tools-thy:           ## Build the THY/ULD-line accelerator tools (cargo dim / damage / apron energy)
+	docker build -t glowsky-tool-cargo-dimensioning:0.1.0 examples/tools/cargo_dimensioning
+	docker build -t glowsky-tool-damage-detect:0.1.0 examples/tools/damage_detect
+	docker build -t glowsky-tool-apron-energy:0.1.0 examples/tools/apron_energy
+
 up:                  ## Build + run the full stack (redis + api + worker)
 	docker compose up --build
 

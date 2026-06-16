@@ -81,14 +81,20 @@ class ContainerRuntime:
             "--cpus", str(resources.cpu),
             "--tmpfs", "/tmp:rw,size=256m",
         ]
-        # Network policy: NONE => fully isolated. ALLOWLIST is a Phase-3 egress proxy.
+        # Network policy — FAIL CLOSED. NONE => fully isolated. ALLOWLIST is meant to route
+        # through a Phase-3 egress proxy that doesn't exist yet, so we must NOT fall through
+        # to Docker's default bridge (unrestricted internet). Until the proxy ships, every
+        # egress class is denied the network; a tool never gets more reach than we can govern.
         if egress == Egress.NONE:
+            argv += ["--network", "none"]
+        else:
+            # ALLOWLIST without a proxy -> deny all egress (the safe, governed default).
             argv += ["--network", "none"]
         if resources.gpu:
             argv += ["--gpus", str(resources.gpu)]
         if user:
             argv += ["--user", user]
-        argv.append(image)
+        argv += ["--", image]
         return argv
 
     def run(

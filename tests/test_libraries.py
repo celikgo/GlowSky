@@ -1,23 +1,14 @@
 """Library API: create, import (SMILES/CSV/SDF), export, dedup, and tenant isolation."""
 from __future__ import annotations
 
-import uuid
-
+import pytest
 from fastapi.testclient import TestClient
 
 from apps.api.main import app
-from tests.test_auth import auth_enabled  # reuse the settings toggle
+from tests.conftest import tenant
 
 
-def _email() -> str:
-    return f"lib-{uuid.uuid4().hex[:12]}@lab.edu"
-
-
-def _account(client) -> dict:
-    return client.post("/auth/signup", json={"email": _email(), "org_name": "Lib Org"}).json()
-
-
-# --- dev mode (auth off): the happy path ---------------------------------------
+# --- happy path (default principal): no token needed ---------------------------
 
 
 def test_create_import_export_round_trip():
@@ -113,21 +104,19 @@ def test_molecule_diff_endpoint():
         assert bad.status_code == 422
 
 
-# --- auth on: tenant isolation -------------------------------------------------
+# --- tenant isolation (real JWTs) ---------------------------------------------
 
 
+@pytest.mark.real_auth
 def test_libraries_are_isolated_between_tenants():
     with TestClient(app) as client:
-        a = _account(client)
-        b = _account(client)
-        ha = {"Authorization": f"Bearer {a['api_key']}"}
-        hb = {"Authorization": f"Bearer {b['api_key']}"}
-        with auth_enabled(True):
-            pid = client.post("/projects", json={"name": "A proj"}, headers=ha).json()["id"]
-            lid = client.post(f"/projects/{pid}/libraries", json={"name": "A lib"},
-                              headers=ha).json()["id"]
+        ha = tenant()["headers"]
+        hb = tenant()["headers"]
+        pid = client.post("/projects", json={"name": "A proj"}, headers=ha).json()["id"]
+        lid = client.post(f"/projects/{pid}/libraries", json={"name": "A lib"},
+                          headers=ha).json()["id"]
 
-            # Org B cannot read or export org A's library.
-            assert client.get(f"/libraries/{lid}", headers=hb).status_code == 404
-            assert client.get(f"/libraries/{lid}/export", headers=hb).status_code == 404
-            assert client.get(f"/libraries/{lid}", headers=ha).status_code == 200
+        # Org B cannot read or export org A's library.
+        assert client.get(f"/libraries/{lid}", headers=hb).status_code == 404
+        assert client.get(f"/libraries/{lid}/export", headers=hb).status_code == 404
+        assert client.get(f"/libraries/{lid}", headers=ha).status_code == 200

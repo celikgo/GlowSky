@@ -1,0 +1,33 @@
+# THY accelerator product #1 (Apron Energy) plugged into Glowsky as a sandboxed container
+# tool. A deterministic projection of apron GSE energy + grid CO2 from ULD movements
+# (ADR-139: a report is a WHERE clause over data you already post; zero when empty).
+name: apron_energy
+version: "0.1.0"
+category: logistics
+summary: Apron GSE energy (kWh) + grid CO2 (kg) projected from ULD movements.
+image: glowsky-tool-apron-energy:0.1.0
+
+compute_class: cpu_light
+latency_class: instant
+determinism: deterministic
+emits_structures: false
+egress: none
+
+input_schema:
+  type: object
+  properties:
+    movements:
+      type: array
+      items:
+        type: object
+        properties:
+          kind: { type: string }
+          count: { type: integer }
+          kwh: { type: number }
+    grid_factor: { type: number }
+  required: [movements]
+
+resources:
+  cpu: 0.5
+  mem_mb: 256
+  timeout_s: 30

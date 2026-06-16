@@ -17,6 +17,9 @@ class ToolCategory(str, Enum):
     RETROSYNTHESIS = "retrosynthesis"
     SEARCH = "search"
     IO = "io"
+    # Domain-agnostic / partner tools registered via the container-tool seam — e.g. the
+    # nakitte-carbon ULD-line AI products plugged in as sandboxed tools (see examples/tools).
+    LOGISTICS = "logistics"
 
 
 class ComputeClass(str, Enum):

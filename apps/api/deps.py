@@ -3,26 +3,24 @@ from __future__ import annotations
 
 from fastapi import Depends, Header, HTTPException
 
-from services.core.auth import DEV_PRINCIPAL, Principal, resolve_token
-from services.core.config import get_settings
+from services.core.auth import Principal
+from services.core.nakitte_auth import resolve_nakitte_token
 from services.core.db import session_scope
 from services.core.models import AgentRun, Library, Project
 
 
 def current_principal(authorization: str | None = Header(default=None)) -> Principal:
-    """Resolve the request's principal.
+    """Resolve the request's principal from a nakitte-carbon-auth platform JWT.
 
-    Auth disabled -> the built-in local owner (single-tenant dev mode).
-    Auth enabled  -> require `Authorization: Bearer <api-key>`; 401 otherwise.
+    Requires `Authorization: Bearer <jwt>` in every environment — there is no auth
+    bypass and no local credential store. 401 if the header is missing or the token
+    fails validation (bad signature, expired, wrong audience, no tenant, …).
     """
-    if not get_settings().auth_enabled:
-        return DEV_PRINCIPAL
-
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
     token = authorization[len("bearer "):].strip()
     with session_scope() as session:
-        principal = resolve_token(session, token)
+        principal = resolve_nakitte_token(session, token)
     if principal is None:
         raise HTTPException(status_code=401, detail="invalid token")
     return principal

@@ -1,5 +1,11 @@
-import { useState } from "react";
-import { api, ApiError, type DesignResult } from "../lib/api";
+import { useEffect, useRef, useState } from "react";
+import {
+  api,
+  ApiError,
+  type Candidate,
+  type DesignPlan,
+  type TraceEntry,
+} from "../lib/api";
 import { MoleculeCard } from "./MoleculeCard";
 
 const EXAMPLE = {
@@ -7,26 +13,78 @@ const EXAMPLE = {
   seed: "c1ccccc1C(=O)O",
 };
 
+/** Reorder streamed cards to the server's final ranking (by InChIKey). */
+function rankBy(cards: Candidate[], order: string[]): Candidate[] {
+  const idx = new Map(order.map((k, i) => [k, i]));
+  return [...cards].sort(
+    (a, b) => (idx.get(a.inchikey) ?? Infinity) - (idx.get(b.inchikey) ?? Infinity),
+  );
+}
+
 export function DesignScreen() {
   const [goal, setGoal] = useState(EXAMPLE.goal);
   const [seed, setSeed] = useState(EXAMPLE.seed);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<DesignResult | null>(null);
 
-  async function run() {
-    setLoading(true);
+  const [streaming, setStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // streamed state, filled milestone by milestone
+  const [parent, setParent] = useState<string | null>(null);
+  const [plan, setPlan] = useState<DesignPlan | null>(null);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [trace, setTrace] = useState<TraceEntry[]>([]);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [models, setModels] = useState<Record<string, string>>({});
+
+  const cancelRef = useRef<(() => void) | null>(null);
+  // Close any live socket when the screen unmounts.
+  useEffect(() => () => cancelRef.current?.(), []);
+
+  function run() {
+    cancelRef.current?.(); // drop any in-flight run
     setError(null);
-    try {
-      setResult(await api.design(goal.trim(), seed.trim()));
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not reach the backend. Is `make run` up?");
-    } finally {
-      setLoading(false);
-    }
+    setParent(null);
+    setPlan(null);
+    setCandidates([]);
+    setTrace([]);
+    setExplanation(null);
+    setRunId(null);
+    setModels({});
+    setStreaming(true);
+
+    cancelRef.current = api.streamDesign(goal.trim(), seed.trim(), {
+      onPlan: (p, pl) => {
+        setParent(p);
+        setPlan(pl);
+      },
+      onCandidate: (c) => setCandidates((cs) => [...cs, c]),
+      onTrace: (t) => setTrace((ts) => [...ts, t]),
+      onRanked: (order) => setCandidates((cs) => rankBy(cs, order)),
+      onExplanation: (t) => setExplanation(t),
+      onComplete: (r) => {
+        setCandidates(r.candidates); // authoritative final set + order
+        setTrace(r.trace);
+        setRunId(r.run_id);
+        setModels(r.models_used);
+        if (r.explanation) setExplanation(r.explanation);
+        setStreaming(false);
+      },
+      onError: (m) => {
+        setError(m);
+        setStreaming(false);
+      },
+    });
   }
 
-  const kept = result?.candidates.filter((c) => c.passed_filters).length ?? 0;
+  function downloadRun(id: string, format: "ipynb" | "md") {
+    api.downloadRun(id, format).catch((e) =>
+      setError(e instanceof ApiError ? e.message : "Download failed."),
+    );
+  }
+
+  const kept = candidates.filter((c) => c.passed_filters).length;
+  const hasResult = streaming || candidates.length > 0 || plan !== null || runId !== null;
 
   return (
     <div className="design">
@@ -51,72 +109,85 @@ export function DesignScreen() {
               placeholder="e.g. c1ccccc1C(=O)O"
             />
           </div>
-          <button className="btn" onClick={run} disabled={loading || !goal.trim() || !seed.trim()}>
-            {loading ? <span className="spinner" /> : "✦"}
-            {loading ? "Designing…" : "Run design"}
+          <button
+            className="btn"
+            onClick={run}
+            disabled={streaming || !goal.trim() || !seed.trim()}
+          >
+            {streaming ? <span className="spinner" /> : "✦"}
+            {streaming ? "Designing…" : "Run design"}
           </button>
         </div>
         {error ? <div className="design__error">{error}</div> : null}
       </section>
 
-      {result ? (
+      {hasResult ? (
         <>
-          {/* Summary + plan */}
-          <div className="section-title">Result</div>
+          {/* Summary + plan — updates live as candidates stream in */}
+          <div className="section-title">
+            Result{streaming ? <span className="spinner spinner--inline" /> : null}
+          </div>
           <div className="summary">
             <span className="chip chip--accent">
-              {result.candidates.length} generated · {kept} passed
+              {candidates.length} generated · {kept} passed
             </span>
-            <span className="chip">parent {result.parent_smiles}</span>
-            {Object.entries(result.models_used).map(([k, v]) => (
+            {parent ? <span className="chip">parent {parent}</span> : null}
+            {Object.entries(models).map(([k, v]) => (
               <span className="chip" key={k}>
                 {k}: {v}
               </span>
             ))}
-            {result.run_id ? (
+            {runId ? (
               <span className="export-links">
-                <a className="chip" href={api.exportRunUrl(result.run_id, "ipynb")} target="_blank" rel="noreferrer">
+                <button className="chip chip--btn" onClick={() => downloadRun(runId, "ipynb")}>
                   ⬇ notebook
-                </a>
-                <a className="chip" href={api.exportRunUrl(result.run_id, "md")} target="_blank" rel="noreferrer">
+                </button>
+                <button className="chip chip--btn" onClick={() => downloadRun(runId, "md")}>
                   ⬇ report
-                </a>
+                </button>
               </span>
             ) : null}
           </div>
 
-          {/* Candidates */}
+          {/* Candidates — each card appears the moment it's profiled */}
           <div className="section-title">Candidates</div>
           <div className="grid">
-            {result.candidates.map((c) => (
+            {candidates.map((c) => (
               <MoleculeCard key={c.inchikey + c.modification} candidate={c} />
             ))}
+            {streaming && candidates.length === 0 ? (
+              <div className="explanation card">Planning and generating analogs…</div>
+            ) : null}
           </div>
 
           {/* Explanation */}
-          {result.explanation ? (
+          {explanation ? (
             <>
               <div className="section-title">Agent explanation</div>
-              <div className="explanation card">{result.explanation}</div>
+              <div className="explanation card">{explanation}</div>
             </>
           ) : null}
 
           {/* Trace */}
-          <div className="section-title">Execution trace</div>
-          <div className="trace card">
-            {result.trace.map((t) => (
-              <div className="trace__row" key={t.step}>
-                <span className="trace__step">{t.step}</span>
-                <span>
-                  <span className="trace__tool mono">{t.tool}</span>{" "}
-                  <span className="trace__summary">{t.summary}</span>
-                </span>
-                <span className="trace__meta">
-                  {t.duration_ms}ms{t.cache_hit ? " · cached" : ""}
-                </span>
+          {trace.length > 0 ? (
+            <>
+              <div className="section-title">Execution trace</div>
+              <div className="trace card">
+                {trace.map((t) => (
+                  <div className="trace__row" key={t.step}>
+                    <span className="trace__step">{t.step}</span>
+                    <span>
+                      <span className="trace__tool mono">{t.tool}</span>{" "}
+                      <span className="trace__summary">{t.summary}</span>
+                    </span>
+                    <span className="trace__meta">
+                      {t.duration_ms}ms{t.cache_hit ? " · cached" : ""}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          ) : null}
         </>
       ) : null}
     </div>

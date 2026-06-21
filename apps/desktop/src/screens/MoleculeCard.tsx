@@ -5,11 +5,27 @@ function num(v: number | boolean | undefined): string {
   return typeof v === "number" ? v.toString() : "—";
 }
 
-export function MoleculeCard({ candidate }: { candidate: Candidate }) {
+export function MoleculeCard({
+  candidate,
+  selected,
+  onToggleSelect,
+}: {
+  candidate: Candidate;
+  /** When defined, the card shows a selection checkbox (used on the Design screen to
+   *  pick analogs to save into a library). Omit on read-only surfaces. */
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const p = candidate.properties;
+  const selectable = onToggleSelect !== undefined;
   return (
-    <article className="molcard card">
+    <article className={`molcard card ${selected ? "molcard--selected" : ""}`}>
       <div className="molcard__head">
+        {selectable ? (
+          <label className="molcard__select">
+            <input type="checkbox" checked={!!selected} onChange={onToggleSelect} />
+          </label>
+        ) : null}
         <span className="molcard__mod">{candidate.modification || "analog"}</span>
         <span className={`chip ${candidate.passed_filters ? "chip--success" : "chip--danger"}`}>
           {candidate.passed_filters ? "passed" : "filtered"}

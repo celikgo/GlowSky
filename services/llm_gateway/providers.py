@@ -61,6 +61,8 @@ class MockProvider:
             text = json.dumps(self._design_plan(req.metadata.get("goal", "")))
         elif intent == "synthesize":
             text = self._synthesize(req.metadata)
+        elif intent == "chat":
+            text = self._chat(req.metadata)
         else:
             text = req.messages[-1]["content"] if req.messages else ""
         return CompletionResponse(
@@ -98,6 +100,17 @@ class MockProvider:
             "rationale": "Heuristic plan from goal (offline mock). A real model would "
             "reason about the target profile and propose richer constraints.",
         }
+
+    @staticmethod
+    def _chat(meta: dict) -> str:
+        """A deterministic, honest stand-in for a conversational reply (offline mock)."""
+        ctx = " I can see the molecule you attached." if meta.get("has_context") else ""
+        return (
+            "I'm running offline (no LLM connected), so I can't reason about chemistry in free "
+            f"text.{ctx} I can still run the deterministic design loop: ask me to 'make N analogs' "
+            "with constraints like 'MW<300, logP 1-3, no PAINS' and a seed molecule. "
+            "[connect a provider in Settings for conversational answers]"
+        )
 
     @staticmethod
     def _synthesize(meta: dict) -> str:

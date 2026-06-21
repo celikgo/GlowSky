@@ -46,6 +46,7 @@ from apps.api.deps import (
 )
 from apps.api.schemas import (
     BatchSubmitRequest,
+    ChatRequest,
     CredentialCreate,
     CredentialResponse,
     DesignRequest,
@@ -63,6 +64,7 @@ from apps.api.schemas import (
     ToolExecuteRequest,
     ValidateRequest,
 )
+from services.agent.chat import run_chat_turn
 from services.agent.orchestrator import DesignOrchestrator
 from services.chemistry.adapters import BackendNotConfigured
 from services.chemistry.adapters.wiring import configure_backends
@@ -817,6 +819,39 @@ async def design(
     return result.model_dump()
 
 
+@app.post("/agent/chat")
+async def chat(req: ChatRequest, principal: Principal = Depends(current_principal)) -> dict:
+    """One Composer turn (non-streaming). Routes to the design loop or a conversational reply;
+    a design turn's run is persisted (when requested) exactly like /agent/design."""
+    if req.project_id is not None:
+        with session_scope() as s:
+            load_project(s, req.project_id, principal)
+    gateway = LLMGateway(org_id=principal.org_id)
+    ctx = ExecutionContext(org_id=principal.org_id, project_id=req.project_id)
+    try:
+        turn = await run_chat_turn(
+            messages=[m.model_dump() for m in req.messages],
+            seed_smiles=req.seed_smiles,
+            context_molecules=[c.model_dump() for c in req.context_molecules],
+            gateway=gateway,
+            executor=app.state.executor,
+            ctx=ctx,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _chat_turn_dict(turn, principal, req.project_id, req.persist)
+
+
+def _chat_turn_dict(turn, principal: Principal, project_id: str | None, persist: bool) -> dict:
+    """Serialise a chat turn, persisting its design run (if any) for provenance."""
+    design = None
+    if turn.design is not None:
+        if persist:
+            turn.design.run_id = _persist(turn.design, principal, project_id)
+        design = turn.design.model_dump()
+    return {"kind": turn.kind, "text": turn.text, "seed": turn.seed, "design": design}
+
+
 def _persist(result, principal: Principal, project_id: str | None) -> str:
     """Store the run (provenance hub) and the molecules it produced, linked back to it.
 
@@ -915,4 +950,57 @@ async def stream_design(ws: WebSocket) -> None:
         return
     except Exception as exc:  # pragma: no cover - defensive: surface, don't hang the client
         await send({"type": "error", "error": f"design failed: {exc}"})
+    await ws.close()
+
+
+@app.websocket("/agent/chat/stream")
+async def stream_chat(ws: WebSocket) -> None:
+    """Run one Composer turn, streaming live to the chat UI.
+
+    Protocol: client opens the socket, then sends one init frame
+    ``{messages, seed_smiles?, context_molecules?, project_id?, persist?, token?}``. For a design
+    turn the server relays the orchestrator's milestones (started / plan / trace / candidate /
+    ranked / explanation); for a conversational turn it sends an ``assistant_message``. Either way
+    a terminal ``complete`` frame carries ``{kind, text, seed, design}`` (design + run_id when a
+    run happened and was persisted), or an ``error`` frame. The socket closes on either.
+    """
+    await ws.accept()
+    try:
+        init = await ws.receive_json()
+    except WebSocketDisconnect:
+        return
+
+    async def send(event: dict) -> None:
+        await ws.send_json(event)
+
+    try:
+        principal = _ws_principal(init.get("token"))
+        messages = init.get("messages") or []
+        if not messages:
+            raise ValueError("messages are required")
+        project_id = init.get("project_id")
+        persist = bool(init.get("persist", True))
+
+        if project_id is not None:
+            with session_scope() as s:
+                load_project(s, project_id, principal)
+
+        gateway = LLMGateway(org_id=principal.org_id)
+        ctx = ExecutionContext(org_id=principal.org_id, project_id=project_id)
+        turn = await run_chat_turn(
+            messages=messages,
+            seed_smiles=init.get("seed_smiles"),
+            context_molecules=init.get("context_molecules") or [],
+            gateway=gateway,
+            executor=app.state.executor,
+            ctx=ctx,
+            emit=send,
+        )
+        await send({"type": "complete", **_chat_turn_dict(turn, principal, project_id, persist)})
+    except ValueError as exc:
+        await send({"type": "error", "error": str(exc)})
+    except WebSocketDisconnect:
+        return
+    except Exception as exc:  # pragma: no cover - defensive: surface, don't hang the client
+        await send({"type": "error", "error": f"chat failed: {exc}"})
     await ws.close()

@@ -287,6 +287,38 @@ export interface DesignStreamHandlers {
   onError?: (message: string) => void;
 }
 
+// --- conversational Composer (WebSocket) -------------------------------------
+
+export interface ChatContextMolecule {
+  smiles: string
+  name?: string | null
+}
+
+/** One message in the wire history sent to the server each turn (stateless server). */
+export interface ChatWireMessage {
+  role: "user" | "assistant"
+  content: string
+}
+
+/** The terminal `complete` frame of a Composer turn. */
+export interface ChatComplete {
+  kind: "design" | "chat" | "need_seed"
+  text: string
+  seed: string | null
+  design: DesignResult | null
+}
+
+export interface ChatStreamHandlers {
+  onPlan?: (parentSmiles: string, plan: DesignPlan) => void
+  onCandidate?: (candidate: Candidate) => void
+  onTrace?: (entry: TraceEntry) => void
+  onRanked?: (order: string[]) => void
+  /** Assistant text — the design synthesis (design turn) or a conversational reply (chat turn). */
+  onAssistantText?: (text: string) => void
+  onComplete?: (result: ChatComplete) => void
+  onError?: (message: string) => void
+}
+
 // --- endpoints ---------------------------------------------------------------
 
 export const api = {
@@ -403,6 +435,79 @@ export const api = {
         /* already closing */
       }
     };
+  },
+  /**
+   * Run one Composer turn over a WebSocket. A design turn relays the same milestones as
+   * `streamDesign` (plan → candidate… → ranked) plus the synthesis as `onAssistantText`; a
+   * conversational turn just sends `onAssistantText`. The terminal `complete` carries the kind,
+   * the assistant text, the carried seed, and the full design run (when one happened). Returns a
+   * cancel function. History + seed + `@`-context ride the init frame (a WS can't send a header).
+   */
+  streamChat(
+    messages: ChatWireMessage[],
+    seed_smiles: string | null,
+    context_molecules: ChatContextMolecule[],
+    h: ChatStreamHandlers,
+  ): () => void {
+    const url = `${BASE.replace(/^http/i, "ws")}/agent/chat/stream`
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(url)
+    } catch {
+      h.onError?.("Could not open a connection to the backend. Is `make run` up?")
+      return () => {}
+    }
+    ws.onopen = () =>
+      ws.send(
+        JSON.stringify({ messages, seed_smiles, context_molecules, persist: true, token: getToken() }),
+      )
+    ws.onmessage = (ev) => {
+      let m: { type: string; [k: string]: unknown }
+      try {
+        m = JSON.parse(ev.data as string)
+      } catch {
+        return
+      }
+      switch (m.type) {
+        case "plan":
+          h.onPlan?.(m.parent_smiles as string, m.plan as DesignPlan)
+          break
+        case "candidate":
+          h.onCandidate?.(m.candidate as Candidate)
+          break
+        case "trace":
+          h.onTrace?.(m.record as TraceEntry)
+          break
+        case "ranked":
+          h.onRanked?.(m.order as string[])
+          break
+        case "explanation":
+          h.onAssistantText?.(m.text as string)
+          break
+        case "assistant_message":
+          h.onAssistantText?.(m.text as string)
+          break
+        case "complete":
+          h.onComplete?.({
+            kind: m.kind as ChatComplete["kind"],
+            text: m.text as string,
+            seed: (m.seed as string | null) ?? null,
+            design: (m.design as DesignResult | null) ?? null,
+          })
+          break
+        case "error":
+          h.onError?.(m.error as string)
+          break
+      }
+    }
+    ws.onerror = () => h.onError?.("Could not reach the backend. Is `make run` up?")
+    return () => {
+      try {
+        ws.close()
+      } catch {
+        /* already closing */
+      }
+    }
   },
   profile: (smiles: string) =>
     request<{ canonical_smiles: string; inchikey: string; properties: Record<string, number | boolean> }>(

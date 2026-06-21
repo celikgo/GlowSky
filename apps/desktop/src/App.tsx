@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Sidebar, type NavKey } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
+import { ComposerScreen } from "./screens/ComposerScreen";
 import { DesignScreen } from "./screens/DesignScreen";
 import { LibraryScreen } from "./screens/LibraryScreen";
 import { DockingScreen } from "./screens/DockingScreen";
@@ -9,6 +10,7 @@ import { SettingsScreen } from "./screens/SettingsScreen";
 import "./App.css";
 
 const TITLES: Record<NavKey, string> = {
+  composer: "Composer",
   design: "Design",
   library: "Library",
   docking: "Docking",
@@ -17,7 +19,7 @@ const TITLES: Record<NavKey, string> = {
 };
 
 export default function App() {
-  const [nav, setNav] = useState<NavKey>("design");
+  const [nav, setNav] = useState<NavKey>("composer");
 
   return (
     <div className="app">
@@ -25,7 +27,9 @@ export default function App() {
       <main className="app__main">
         <TopBar title={TITLES[nav]} />
         <div className="app__content">
-          {nav === "design" ? (
+          {nav === "composer" ? (
+            <ComposerScreen />
+          ) : nav === "design" ? (
             <DesignScreen />
           ) : nav === "library" ? (
             <LibraryScreen />

@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     nakitte_jwks_url: str = "http://localhost:8081/.well-known/jwks.json"
     nakitte_jwt_issuer: str | None = None  # enforced as the `iss` claim when set
     nakitte_jwt_audience: str = "carbon-platform"
+    # Base URL of carbon-auth for the login proxy (POST /auth/login, /auth/refresh). Same
+    # service that serves the JWKS; the desktop logs in through Glowsky so this URL stays
+    # server-side. Glowsky never stores credentials — it forwards them and relays the token.
+    nakitte_auth_url: str = "http://localhost:8081"
 
     # --- Docking receptor confinement ---
     # The `dock` tool only accepts receptor files resolving under this directory, so a

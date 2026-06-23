@@ -71,6 +71,26 @@ class ChatRequest(BaseModel):
 # --- Auth & tenancy -----------------------------------------------------------
 
 
+class LoginRequest(BaseModel):
+    email: str = Field(..., examples=["chemist@lab.edu"])
+    password: str = Field(..., description="Forwarded to carbon-auth; never stored by Glowsky.")
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class TokenResponse(BaseModel):
+    """Relayed from carbon-auth. `tenant_scoped` is False when the user has 0 or 2+ tenants —
+    the access token then carries no tenant and the caller must select one before using it."""
+
+    access_token: str
+    access_token_expires_in: int
+    refresh_token: str | None = None
+    refresh_token_expires_in: int | None = None
+    tenant_scoped: bool
+
+
 class PrincipalResponse(BaseModel):
     user_id: str
     org_id: str

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
+from itertools import zip_longest
 
 from services.agent.schemas import (
     Candidate,
@@ -58,6 +59,22 @@ class DesignOrchestrator:
             return DesignPlan(**json.loads(resp.text))
         except Exception:
             return DesignPlan(rationale="fallback plan (model returned unparseable JSON)")
+
+    @staticmethod
+    def _merge_analogs(bio: list[dict], rgroup: list[dict], cap: int) -> list[dict]:
+        """Interleave the two generation strategies (bioisosteres first, so the higher-value
+        functional-group / scaffold moves are represented), de-duplicate by InChIKey, cap."""
+        merged: list[dict] = []
+        seen: set[str] = set()
+        for a, b in zip_longest(bio, rgroup):
+            for item in (a, b):
+                if item is None or item["inchikey"] in seen:
+                    continue
+                seen.add(item["inchikey"])
+                merged.append(item)
+                if len(merged) >= cap:
+                    return merged
+        return merged
 
     @staticmethod
     def _mpo_profile(c: DesignConstraints) -> str:
@@ -158,15 +175,29 @@ class DesignOrchestrator:
         plan = await self._propose_plan(goal)
         await _emit({"type": "plan", "parent_smiles": parent_smiles, "plan": plan.model_dump()})
 
-        # 3. Generate analogs (deterministic tool) ---------------------------
+        # 3. Generate analogs — two deterministic strategies, merged --------
+        #    R-group enumeration decorates the scaffold; bioisosteric replacement / scaffold
+        #    hopping swaps functional groups and ring atoms (acid->tetrazole, aza-walk, ...).
+        #    Running both gives the agent the diversity a medicinal chemist would explore.
         gen_res = self._exec.execute(
             "generate_analogs",
             {"canonical_smiles": parent_smiles, "max_analogs": plan.max_analogs}, ctx,
         )
-        analogs = gen_res.output
+        rgroup = gen_res.output
         rec = record(gen_res, input={"canonical_smiles": parent_smiles, "max_analogs": plan.max_analogs},
-                     summary=f"generated {len(analogs)} validated analogs")
+                     summary=f"R-group enumeration: {len(rgroup)} analogs")
         await _emit({"type": "trace", "record": rec.model_dump()})
+
+        bio_res = self._exec.execute(
+            "bioisosteric_replacement",
+            {"canonical_smiles": parent_smiles, "max_results": plan.max_analogs}, ctx,
+        )
+        bio = bio_res.output
+        rec = record(bio_res, input={"canonical_smiles": parent_smiles, "max_results": plan.max_analogs},
+                     summary=f"bioisosteres + scaffold hops: {len(bio)} analogs")
+        await _emit({"type": "trace", "record": rec.model_dump()})
+
+        analogs = self._merge_analogs(bio, rgroup, plan.max_analogs)
 
         # 4. Profile + 5. filter + rank --------------------------------------
         candidates: list[Candidate] = []

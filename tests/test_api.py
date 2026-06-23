@@ -74,5 +74,6 @@ def test_design_endpoint_persists_and_returns_provenance():
         body = r.json()
         assert body["run_id"]  # persisted -> provenance hub created
         assert len(body["candidates"]) > 0
-        assert len(body["trace"]) == 3
+        # validate -> generate_analogs -> bioisosteric_replacement -> profile
+        assert len(body["trace"]) == 4
         assert body["models_used"]["reasoning"] == "mock/mock"

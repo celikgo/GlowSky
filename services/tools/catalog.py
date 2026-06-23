@@ -10,6 +10,7 @@ from services.chemistry.adapters.admet import predict_admet
 from services.chemistry.adapters.docking import dock
 from services.chemistry.conformers import generate_conformers
 from services.chemistry.fingerprints import fingerprint
+from services.chemistry.bioisosteres import bioisosteric_analogs
 from services.chemistry.generative import generate_analogs
 from services.chemistry.medchem import medchem_rules, mpo_score
 from services.chemistry.mmp import matched_pairs, sar_transforms
@@ -157,6 +158,17 @@ def build_default_registry() -> ToolRegistry:
         input_schema={"type": "object",
                       "properties": {"canonical_smiles": _STR,
                                      "max_analogs": {"type": "integer"}},
+                      "required": ["canonical_smiles"]},
+    ))
+    add(ToolSpec(
+        name="bioisosteric_replacement", version=V, category=ToolCategory.GENERATIVE,
+        summary="Bioisostere + scaffold-hop analogs (acid->tetrazole, ester->amide, "
+                "ether->thioether, aza-walk, ...) — knowledge-based, validated.",
+        handler=bioisosteric_analogs, emits_structures=True,
+        compute_class=ComputeClass.CPU_HEAVY, latency_class=LatencyClass.SHORT,
+        input_schema={"type": "object",
+                      "properties": {"canonical_smiles": _STR,
+                                     "max_results": {"type": "integer"}},
                       "required": ["canonical_smiles"]},
     ))
 

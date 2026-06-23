@@ -19,6 +19,12 @@ import { MoleculeCard } from "./MoleculeCard"
 import { MoleculeEditorModal } from "../components/MoleculeEditorModal"
 import { SaveToLibraryModal } from "./SaveToLibraryModal"
 import { ContextPickerModal } from "./ContextPickerModal"
+import type { ComposerCommand } from "../components/CommandPalette"
+
+/** A command pushed in from the Cmd+K palette; `nonce` re-fires the effect for repeat commands. */
+export interface ComposerInject extends ComposerCommand {
+  nonce: number
+}
 
 function selKey(c: Candidate): string {
   return c.inchikey + c.modification
@@ -46,7 +52,7 @@ const SUGGESTIONS = [
 let _nextId = 1
 const newId = () => _nextId++
 
-export function ComposerScreen() {
+export function ComposerScreen({ inject }: { inject: ComposerInject | null }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [seed, setSeed] = useState("")
@@ -65,6 +71,16 @@ export function ComposerScreen() {
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" })
   }, [messages])
+
+  // Apply a Cmd+K palette command: set the seed (if the action targeted a molecule), prefill the
+  // prompt, and/or open the editor. Keyed on the nonce so the same command can fire repeatedly.
+  useEffect(() => {
+    if (!inject) return
+    if (inject.seed !== undefined) setSeed(inject.seed)
+    if (inject.prompt !== undefined) setInput(inject.prompt)
+    if (inject.openEditor) setEditorOpen(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inject?.nonce])
 
   /** Patch the assistant turn with the given id (the streaming target). */
   function patchTurn(id: number, fn: (t: AssistantTurn) => AssistantTurn) {

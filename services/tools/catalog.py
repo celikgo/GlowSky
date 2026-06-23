@@ -12,6 +12,7 @@ from services.chemistry.conformers import generate_conformers
 from services.chemistry.fingerprints import fingerprint
 from services.chemistry.generative import generate_analogs
 from services.chemistry.medchem import medchem_rules, mpo_score
+from services.chemistry.mmp import matched_pairs, sar_transforms
 from services.chemistry.properties import compute_descriptors, druglikeness, profile, structural_alerts
 from services.chemistry.scaffolds import murcko_scaffold
 from services.chemistry.search import substructure_search
@@ -126,6 +127,25 @@ def build_default_registry() -> ToolRegistry:
         summary="Drug-/lead-/fragment-likeness rule battery: Lipinski, Veber, Ghose, "
                 "Egan, Muegge, lead-like, Rule of 3 — pass/fail + violations.",
         handler=medchem_rules, input_schema=_obj(canonical_smiles=_STR),
+    ))
+    add(ToolSpec(
+        name="matched_pairs", version=V, category=ToolCategory.SEARCH,
+        summary="Matched molecular pairs in a set: shared scaffold + single-group "
+                "transformation, with the property delta when a property is given.",
+        handler=matched_pairs, batchable=True,
+        input_schema={"type": "object",
+                      "properties": {"smiles_list": _STR_LIST, "property": _STR},
+                      "required": ["smiles_list"]},
+    ))
+    add(ToolSpec(
+        name="sar_transforms", version=V, category=ToolCategory.SEARCH,
+        summary="Mine SAR transforms across a set: each transformation's mean effect "
+                "on a property (logP/MW/TPSA/QED/MPO/...), ranked by support.",
+        handler=sar_transforms, batchable=True,
+        input_schema={"type": "object",
+                      "properties": {"smiles_list": _STR_LIST, "property": _STR,
+                                     "min_count": {"type": "integer"}},
+                      "required": ["smiles_list"]},
     ))
 
     # --- Generative (CPU-heavy, emits structures -> firewall) -----------

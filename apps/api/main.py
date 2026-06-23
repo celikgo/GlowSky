@@ -30,6 +30,9 @@ import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
+import jwt
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -50,6 +53,9 @@ from apps.api.schemas import (
     CredentialCreate,
     CredentialResponse,
     DesignRequest,
+    LoginRequest,
+    RefreshRequest,
+    TokenResponse,
     DiffRequest,
     ImportRequest,
     JobSubmitRequest,
@@ -142,6 +148,56 @@ def health() -> dict:
 
 
 # --- Auth & tenancy ------------------------------------------------------------
+
+
+def _token_is_tenant_scoped(access_token: str) -> bool:
+    """True if the access token already carries a tenant claim. carbon-auth scopes the login
+    token automatically for single-tenant users; 0/2+ tenants leave it unscoped (needs select)."""
+    try:
+        claims = jwt.decode(access_token, options={"verify_signature": False})
+    except Exception:
+        return False
+    return bool(claims.get("tenant_id"))
+
+
+def _carbon_auth_post(path: str, body: dict) -> TokenResponse:
+    """Forward an auth call to carbon-auth and relay its token response. Glowsky never stores the
+    credentials — it proxies so the desktop has one origin and carbon-auth's URL stays config."""
+    url = f"{get_settings().nakitte_auth_url.rstrip('/')}{path}"
+    try:
+        resp = httpx.post(url, json=body, timeout=15.0)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="identity service unreachable") from exc
+    if resp.status_code == 401:
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    if resp.status_code == 423:
+        raise HTTPException(status_code=423, detail="account locked")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"identity service error ({resp.status_code})")
+    data = resp.json()
+    access = data["accessToken"]
+    return TokenResponse(
+        access_token=access,
+        access_token_expires_in=int(data.get("accessTokenExpiresIn", 0)),
+        refresh_token=data.get("refreshToken"),
+        refresh_token_expires_in=(
+            int(data["refreshTokenExpiresIn"]) if data.get("refreshTokenExpiresIn") is not None else None
+        ),
+        tenant_scoped=_token_is_tenant_scoped(access),
+    )
+
+
+@app.post("/auth/login", response_model=TokenResponse)
+def login(req: LoginRequest) -> TokenResponse:
+    """Exchange email + password for a carbon-auth access token (proxied). Unauthenticated."""
+    return _carbon_auth_post("/auth/login", {"email": req.email, "password": req.password})
+
+
+@app.post("/auth/refresh", response_model=TokenResponse)
+def refresh(req: RefreshRequest) -> TokenResponse:
+    """Rotate a refresh token for a fresh access token (proxied). Unauthenticated."""
+    return _carbon_auth_post("/auth/refresh", {"refreshToken": req.refresh_token})
+
 
 @app.get("/auth/me", response_model=PrincipalResponse)
 def auth_me(principal: Principal = Depends(current_principal)) -> PrincipalResponse:

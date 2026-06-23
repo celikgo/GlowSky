@@ -1403,3 +1403,38 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* --- Settings: login form -------------------------------------------------- */
+
+.settings__loginform {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.settings__loginform .input {
+  flex: 1;
+  min-width: 160px;
+}
+.settings__loginmsg {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.settings__advanced {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.settings__advanced > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  user-select: none;
+}
+.settings__advanced > summary:hover {
+  color: var(--text);
+}
+.settings__advanced .settings__addline {
+  margin-top: 10px;
+}

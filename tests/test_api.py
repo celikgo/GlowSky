@@ -43,6 +43,64 @@ def test_assess_endpoint_bundles_the_expert_layer():
         assert bad.status_code == 422
 
 
+def test_login_proxies_to_carbon_auth(monkeypatch):
+    """POST /auth/login forwards credentials to carbon-auth and relays the token, flagging
+    whether it's already tenant-scoped. carbon-auth is mocked — Glowsky never stores the password."""
+    import httpx as _httpx
+
+    import apps.api.main as main_mod
+    from tests.conftest import make_token
+
+    captured = {}
+    scoped = make_token(tenant_id="local-org")  # carbon-auth scopes single-tenant logins
+
+    class _Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "accessToken": scoped,
+                "accessTokenExpiresIn": 900,
+                "refreshToken": "refresh-abc",
+                "refreshTokenExpiresIn": 1209600,
+            }
+
+    def _fake_post(url, json, timeout):  # noqa: A002 - mirrors httpx.post signature
+        captured["url"] = url
+        captured["body"] = json
+        return _Resp()
+
+    monkeypatch.setattr(main_mod.httpx, "post", _fake_post)
+
+    with TestClient(main_mod.app) as client:
+        r = client.post("/auth/login", json={"email": "a@lab.edu", "password": "secret123"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["access_token"] == scoped
+    assert body["refresh_token"] == "refresh-abc"
+    assert body["tenant_scoped"] is True
+    # Credentials were forwarded to carbon-auth's /auth/login, not stored.
+    assert captured["url"].endswith("/auth/login")
+    assert captured["body"] == {"email": "a@lab.edu", "password": "secret123"}
+
+
+def test_login_maps_invalid_credentials_to_401(monkeypatch):
+    import apps.api.main as main_mod
+
+    class _Resp:
+        status_code = 401
+
+        @staticmethod
+        def json():
+            return {"error": "invalid_credentials"}
+
+    monkeypatch.setattr(main_mod.httpx, "post", lambda url, json, timeout: _Resp())
+    with TestClient(main_mod.app) as client:
+        r = client.post("/auth/login", json={"email": "a@lab.edu", "password": "wrongpass"})
+    assert r.status_code == 401
+
+
 def test_conformer_endpoint_returns_3d_molblock():
     with TestClient(app) as client:
         r = client.post("/molecules/conformer", json={"smiles": "CC(=O)Oc1ccccc1C(=O)O"})

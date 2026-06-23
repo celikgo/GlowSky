@@ -14,11 +14,12 @@ export class ApiError extends Error {
 }
 
 // --- auth: nakitte-carbon-auth access token (the only credential) -------------
-// Every backend call carries a platform JWT. The desktop has no login flow yet, so
-// the token is pasted in Settings and persisted locally; an env default (VITE_AUTH_TOKEN)
-// is a convenience for dev. Sent as `Authorization: Bearer` on HTTP and `?token=`/init
-// frame on WebSockets (a WS handshake can't carry a header).
+// Every backend call carries a platform JWT. It's obtained by logging in (email + password
+// proxied through the backend to carbon-auth) or pasted directly in Settings, and persisted
+// locally. The refresh token (when carbon-auth returns one) lets us silently renew an expired
+// access token. Sent as `Authorization: Bearer` on HTTP and `?token=`/init frame on WebSockets.
 const TOKEN_KEY = "glowsky_token";
+const REFRESH_KEY = "glowsky_refresh_token";
 
 export function getToken(): string {
   return localStorage.getItem(TOKEN_KEY) ?? (import.meta.env.VITE_AUTH_TOKEN as string | undefined) ?? "";
@@ -27,6 +28,21 @@ export function getToken(): string {
 export function setToken(token: string): void {
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
+}
+
+function getRefreshToken(): string {
+  return localStorage.getItem(REFRESH_KEY) ?? "";
+}
+
+function setRefreshToken(token: string | null): void {
+  if (token) localStorage.setItem(REFRESH_KEY, token);
+  else localStorage.removeItem(REFRESH_KEY);
+}
+
+/** Clear all stored credentials (logout). */
+export function clearAuth(): void {
+  setToken("");
+  setRefreshToken(null);
 }
 
 function authHeaders(): Record<string, string> {
@@ -64,8 +80,8 @@ async function download(path: string, fallbackName: string): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(`${BASE}${path}`, {
     ...init,
     headers: {
       "content-type": "application/json",
@@ -73,7 +89,44 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...((init?.headers as Record<string, string>) ?? {}),
     },
   });
+}
+
+/** Exchange the stored refresh token for a fresh access token. Returns true on success.
+ *  Concurrent callers share one in-flight refresh so we don't stampede carbon-auth. */
+let _refreshInFlight: Promise<boolean> | null = null;
+function tryRefresh(): Promise<boolean> {
+  const rt = getRefreshToken();
+  if (!rt) return Promise.resolve(false);
+  if (_refreshInFlight) return _refreshInFlight;
+  _refreshInFlight = fetch(`${BASE}/auth/refresh`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ refresh_token: rt }),
+  })
+    .then(async (r) => {
+      if (!r.ok) {
+        clearAuth(); // refresh failed (expired/reused) → force re-login
+        return false;
+      }
+      const t = (await r.json()) as TokenResponse;
+      setToken(t.access_token);
+      setRefreshToken(t.refresh_token ?? rt);
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => {
+      _refreshInFlight = null;
+    });
+  return _refreshInFlight;
+}
+
+async function request<T>(path: string, init?: RequestInit, _retried = false): Promise<T> {
+  const res = await rawFetch(path, init);
   if (!res.ok) {
+    // An expired access token → try one silent refresh, then replay the request once.
+    if (res.status === 401 && !_retried && !path.startsWith("/auth/") && (await tryRefresh())) {
+      return request<T>(path, init, true);
+    }
     let detail = res.statusText;
     try {
       detail = (await res.json()).detail ?? detail;
@@ -86,6 +139,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // --- types (mirror the API response shapes) ----------------------------------
+
+export interface TokenResponse {
+  access_token: string;
+  access_token_expires_in: number;
+  refresh_token: string | null;
+  refresh_token_expires_in: number | null;
+  /** False when the user has 0 or 2+ tenants — the token isn't tenant-scoped yet. */
+  tenant_scoped: boolean;
+}
 
 export interface Health {
   status: string;
@@ -379,6 +441,18 @@ export interface ChatStreamHandlers {
 export const api = {
   base: BASE,
   health: () => request<Health>("/health"),
+
+  /** Log in with email + password (proxied to carbon-auth). Stores the access + refresh tokens
+   *  and returns the response so the UI can warn when the token isn't tenant-scoped. */
+  async login(email: string, password: string): Promise<TokenResponse> {
+    const t = await request<TokenResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    setToken(t.access_token);
+    setRefreshToken(t.refresh_token ?? null);
+    return t;
+  },
 
   // projects
   listProjects: () => request<Project[]>("/projects"),

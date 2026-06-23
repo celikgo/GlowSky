@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   api,
   ApiError,
+  clearAuth,
   getToken,
   setToken,
   type Credential,
@@ -33,6 +34,12 @@ export function SettingsScreen() {
   // platform access token (the only credential the backend accepts)
   const [tokenDraft, setTokenDraft] = useState(getToken());
   const [tokenSaved, setTokenSaved] = useState(getToken());
+
+  // login form (email + password → carbon-auth via the backend proxy)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [loginMsg, setLoginMsg] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -108,30 +115,98 @@ export function SettingsScreen() {
   }
 
   function clearToken() {
-    setToken("");
+    clearAuth();
     setTokenDraft("");
     setTokenSaved("");
+    setLoginMsg(null);
+  }
+
+  async function doLogin() {
+    setLoggingIn(true);
+    setLoginMsg(null);
+    setError(null);
+    try {
+      const t = await api.login(email.trim(), password);
+      setTokenDraft(t.access_token);
+      setTokenSaved(t.access_token);
+      setPassword("");
+      if (!t.tenant_scoped) {
+        setLoginMsg(
+          "Signed in, but your account has no single tenant — paste a tenant-scoped token below.",
+        );
+      }
+      load(); // re-fetch now that requests are authenticated
+    } catch (e) {
+      setLoginMsg(
+        e instanceof ApiError && e.status === 401
+          ? "Invalid email or password."
+          : e instanceof ApiError && e.status === 502
+            ? "Identity service unreachable."
+            : errMsg(e),
+      );
+    } finally {
+      setLoggingIn(false);
+    }
   }
 
   return (
     <div className="settings">
       {error ? <div className="design__error">{error}</div> : null}
 
-      {/* Platform access token — authenticates every request to the backend */}
+      {/* Platform access — log in with carbon-auth credentials (proxied through the backend). */}
       <div className="section-title">Platform access</div>
       <p className="settings__note">
-        Glowsky authenticates with a <strong>nakitte-carbon-auth</strong> access token (JWT) —
-        the only credential the backend accepts. Paste one to connect; it's stored locally in
-        this app and sent with every request.
+        Sign in with your <strong>nakitte-carbon-auth</strong> account. Glowsky proxies the login to
+        carbon-auth and stores the returned token locally — your password is never stored. The
+        session refreshes silently when the access token expires.
       </p>
       <section className="card settings__group">
         <div className="settings__row">
           <div className="settings__rowlabel">
-            <span className="settings__provider">Access token</span>
+            <span className="settings__provider">Account</span>
             <span className={`chip ${tokenSaved ? "chip--success" : ""}`}>
-              {tokenSaved ? "connected" : "not set"}
+              {tokenSaved ? "signed in" : "signed out"}
             </span>
           </div>
+          {tokenSaved ? (
+            <div className="settings__addline">
+              <button className="btn btn--ghost settings__btn" onClick={clearToken}>
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <div className="settings__loginform">
+              <input
+                className="input"
+                type="email"
+                placeholder="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <input
+                className="input"
+                type="password"
+                placeholder="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && email.trim() && password && doLogin()}
+              />
+              <button
+                className="btn settings__btn"
+                onClick={doLogin}
+                disabled={loggingIn || !email.trim() || !password}
+              >
+                {loggingIn ? <span className="spinner" /> : null}
+                Sign in
+              </button>
+            </div>
+          )}
+          {loginMsg ? <div className="settings__loginmsg">{loginMsg}</div> : null}
+        </div>
+
+        {/* Advanced: paste a token directly (e.g. a tenant-scoped token for multi-tenant users). */}
+        <details className="settings__advanced">
+          <summary>Paste a token directly</summary>
           <div className="settings__addline">
             <input
               className="input mono"
@@ -143,13 +218,8 @@ export function SettingsScreen() {
             <button className="btn settings__btn" onClick={saveToken} disabled={!tokenDraft.trim()}>
               Save
             </button>
-            {tokenSaved ? (
-              <button className="btn btn--ghost settings__btn" onClick={clearToken}>
-                Clear
-              </button>
-            ) : null}
           </div>
-        </div>
+        </details>
       </section>
 
       {/* Provider keys */}

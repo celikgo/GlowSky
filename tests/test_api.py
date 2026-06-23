@@ -66,12 +66,12 @@ def test_login_proxies_to_carbon_auth(monkeypatch):
                 "refreshTokenExpiresIn": 1209600,
             }
 
-    def _fake_post(url, json, timeout):  # noqa: A002 - mirrors httpx.post signature
+    def _fake_request(method, url, json=None, headers=None, timeout=None):
         captured["url"] = url
         captured["body"] = json
         return _Resp()
 
-    monkeypatch.setattr(main_mod.httpx, "post", _fake_post)
+    monkeypatch.setattr(main_mod.httpx, "request", _fake_request)
 
     with TestClient(main_mod.app) as client:
         r = client.post("/auth/login", json={"email": "a@lab.edu", "password": "secret123"})
@@ -95,10 +95,67 @@ def test_login_maps_invalid_credentials_to_401(monkeypatch):
         def json():
             return {"error": "invalid_credentials"}
 
-    monkeypatch.setattr(main_mod.httpx, "post", lambda url, json, timeout: _Resp())
+    monkeypatch.setattr(
+        main_mod.httpx, "request", lambda method, url, json=None, headers=None, timeout=None: _Resp()
+    )
     with TestClient(main_mod.app) as client:
         r = client.post("/auth/login", json={"email": "a@lab.edu", "password": "wrongpass"})
     assert r.status_code == 401
+
+
+def test_tenant_list_and_select(monkeypatch):
+    """A 0/2+-tenant user lists their tenants (carbon-auth /me) then selects one for a
+    tenant-scoped token (carbon-auth /auth/select-tenant). carbon-auth mocked; bearer forwarded."""
+    import apps.api.main as main_mod
+    from tests.conftest import make_token
+
+    scoped = make_token(tenant_id="tenant-A")
+    seen = {}
+
+    class _Resp:
+        def __init__(self, status, payload):
+            self.status_code = status
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    def _fake_request(method, url, json=None, headers=None, timeout=None):
+        seen["bearer"] = (headers or {}).get("authorization")
+        if url.endswith("/me"):
+            return _Resp(200, {"memberships": [
+                {"tenantId": "tenant-A", "unvan": "Acme Labs", "roles": ["owner"]},
+                {"tenantId": "tenant-B", "unvan": "Beta Bio", "roles": ["editor"]},
+            ]})
+        if url.endswith("/auth/select-tenant"):
+            seen["selected"] = json["tenantId"]
+            return _Resp(200, {"accessToken": scoped, "accessTokenExpiresIn": 900})
+        raise AssertionError(url)
+
+    monkeypatch.setattr(main_mod.httpx, "request", _fake_request)
+
+    with TestClient(main_mod.app) as client:
+        tenants = client.get("/auth/tenants", headers={"authorization": "Bearer login-tok"})
+        assert tenants.status_code == 200
+        rows = tenants.json()
+        assert {r["name"] for r in rows} == {"Acme Labs", "Beta Bio"}
+        assert seen["bearer"] == "Bearer login-tok"  # forwarded, not swallowed
+
+        sel = client.post(
+            "/auth/select-tenant",
+            headers={"authorization": "Bearer login-tok"},
+            json={"tenant_id": "tenant-A"},
+        )
+        assert sel.status_code == 200
+        body = sel.json()
+        assert body["tenant_scoped"] is True  # the scoped token now carries a tenant
+        assert seen["selected"] == "tenant-A"
+
+
+def test_tenant_list_requires_bearer():
+    with TestClient(app) as client:
+        r = client.get("/auth/tenants")
+        assert r.status_code == 401
 
 
 def test_conformer_endpoint_returns_3d_molblock():

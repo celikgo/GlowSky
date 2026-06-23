@@ -35,7 +35,7 @@ import jwt
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, select
@@ -55,6 +55,8 @@ from apps.api.schemas import (
     DesignRequest,
     LoginRequest,
     RefreshRequest,
+    SelectTenantRequest,
+    TenantInfo,
     TokenResponse,
     DiffRequest,
     ImportRequest,
@@ -160,21 +162,27 @@ def _token_is_tenant_scoped(access_token: str) -> bool:
     return bool(claims.get("tenant_id"))
 
 
-def _carbon_auth_post(path: str, body: dict) -> TokenResponse:
-    """Forward an auth call to carbon-auth and relay its token response. Glowsky never stores the
-    credentials — it proxies so the desktop has one origin and carbon-auth's URL stays config."""
+def _carbon_auth_call(method: str, path: str, *, json: dict | None = None, bearer: str | None = None):
+    """Forward a call to carbon-auth and return the raw response, mapping transport/4xx to HTTP
+    errors. Glowsky proxies (never stores credentials) so the desktop has one origin and
+    carbon-auth's URL stays config. `bearer` forwards the caller's token (e.g. the not-yet-scoped
+    login token) for the authed /me and /auth/select-tenant calls."""
     url = f"{get_settings().nakitte_auth_url.rstrip('/')}{path}"
+    headers = {"authorization": bearer} if bearer else None
     try:
-        resp = httpx.post(url, json=body, timeout=15.0)
+        resp = httpx.request(method, url, json=json, headers=headers, timeout=15.0)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="identity service unreachable") from exc
-    if resp.status_code == 401:
+    if resp.status_code in (401, 403):
         raise HTTPException(status_code=401, detail="invalid credentials")
     if resp.status_code == 423:
         raise HTTPException(status_code=423, detail="account locked")
     if resp.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"identity service error ({resp.status_code})")
-    data = resp.json()
+    return resp
+
+
+def _token_response(data: dict) -> TokenResponse:
     access = data["accessToken"]
     return TokenResponse(
         access_token=access,
@@ -190,13 +198,46 @@ def _carbon_auth_post(path: str, body: dict) -> TokenResponse:
 @app.post("/auth/login", response_model=TokenResponse)
 def login(req: LoginRequest) -> TokenResponse:
     """Exchange email + password for a carbon-auth access token (proxied). Unauthenticated."""
-    return _carbon_auth_post("/auth/login", {"email": req.email, "password": req.password})
+    return _token_response(
+        _carbon_auth_call("POST", "/auth/login", json={"email": req.email, "password": req.password}).json()
+    )
 
 
 @app.post("/auth/refresh", response_model=TokenResponse)
 def refresh(req: RefreshRequest) -> TokenResponse:
     """Rotate a refresh token for a fresh access token (proxied). Unauthenticated."""
-    return _carbon_auth_post("/auth/refresh", {"refreshToken": req.refresh_token})
+    return _token_response(
+        _carbon_auth_call("POST", "/auth/refresh", json={"refreshToken": req.refresh_token}).json()
+    )
+
+
+@app.get("/auth/tenants", response_model=list[TenantInfo])
+def list_tenants(authorization: str | None = Header(default=None)) -> list[TenantInfo]:
+    """List the signed-in user's tenants (carbon-auth /me memberships), for the picker a 0/2+-tenant
+    user sees after login. Forwards the caller's (not-yet-scoped) token — NOT gated by
+    current_principal, which would reject a tenant-less token."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="missing bearer token")
+    data = _carbon_auth_call("GET", "/me", bearer=authorization).json()
+    return [
+        TenantInfo(tenant_id=str(m["tenantId"]), name=m.get("unvan") or str(m["tenantId"]),
+                   roles=list(m.get("roles", [])))
+        for m in data.get("memberships", [])
+    ]
+
+
+@app.post("/auth/select-tenant", response_model=TokenResponse)
+def select_tenant(
+    req: SelectTenantRequest, authorization: str | None = Header(default=None)
+) -> TokenResponse:
+    """Scope the session to a chosen tenant (carbon-auth /auth/select-tenant), returning a
+    tenant-scoped token. Forwards the caller's login token; unauthenticated at Glowsky's layer."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="missing bearer token")
+    data = _carbon_auth_call(
+        "POST", "/auth/select-tenant", json={"tenantId": req.tenant_id}, bearer=authorization
+    ).json()
+    return _token_response(data)
 
 
 @app.get("/auth/me", response_model=PrincipalResponse)

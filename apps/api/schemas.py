@@ -80,6 +80,16 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class SelectTenantRequest(BaseModel):
+    tenant_id: str = Field(..., description="The tenant to scope the session to.")
+
+
+class TenantInfo(BaseModel):
+    tenant_id: str
+    name: str
+    roles: list[str] = Field(default_factory=list)
+
+
 class TokenResponse(BaseModel):
     """Relayed from carbon-auth. `tenant_scoped` is False when the user has 0 or 2+ tenants —
     the access token then carries no tenant and the caller must select one before using it."""

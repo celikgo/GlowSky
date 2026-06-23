@@ -8,6 +8,7 @@ import {
   type Credential,
   type ProviderInfo,
   type RouteInfo,
+  type TenantInfo,
 } from "../lib/api";
 
 const TASK_LABELS: Record<string, string> = {
@@ -40,6 +41,8 @@ export function SettingsScreen() {
   const [password, setPassword] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
   const [loginMsg, setLoginMsg] = useState<string | null>(null);
+  // After an unscoped login (0/2+ tenants), the tenants to choose from.
+  const [tenants, setTenants] = useState<TenantInfo[] | null>(null);
 
   async function load() {
     try {
@@ -119,23 +122,31 @@ export function SettingsScreen() {
     setTokenDraft("");
     setTokenSaved("");
     setLoginMsg(null);
+    setTenants(null);
   }
 
   async function doLogin() {
     setLoggingIn(true);
     setLoginMsg(null);
     setError(null);
+    setTenants(null);
     try {
       const t = await api.login(email.trim(), password);
-      setTokenDraft(t.access_token);
-      setTokenSaved(t.access_token);
       setPassword("");
-      if (!t.tenant_scoped) {
-        setLoginMsg(
-          "Signed in, but your account has no single tenant — paste a tenant-scoped token below.",
-        );
+      if (t.tenant_scoped) {
+        // Single-tenant user — carbon-auth already scoped the token; we're in.
+        setTokenDraft(t.access_token);
+        setTokenSaved(t.access_token);
+        load();
+        return;
       }
-      load(); // re-fetch now that requests are authenticated
+      // 0 or 2+ tenants → the token isn't scoped yet; let the user pick.
+      const list = await api.listTenants();
+      if (list.length === 0) {
+        setLoginMsg("Your account isn't a member of any tenant yet — contact your admin.");
+      } else {
+        setTenants(list);
+      }
     } catch (e) {
       setLoginMsg(
         e instanceof ApiError && e.status === 401
@@ -146,6 +157,19 @@ export function SettingsScreen() {
       );
     } finally {
       setLoggingIn(false);
+    }
+  }
+
+  async function pickTenant(t: TenantInfo) {
+    setLoginMsg(null);
+    try {
+      const scoped = await api.selectTenant(t.tenant_id);
+      setTokenDraft(scoped.access_token);
+      setTokenSaved(scoped.access_token);
+      setTenants(null);
+      load();
+    } catch (e) {
+      setLoginMsg(errMsg(e));
     }
   }
 
@@ -172,6 +196,21 @@ export function SettingsScreen() {
             <div className="settings__addline">
               <button className="btn btn--ghost settings__btn" onClick={clearToken}>
                 Sign out
+              </button>
+            </div>
+          ) : tenants ? (
+            <div className="settings__tenants">
+              <div className="settings__loginmsg">Choose a workspace to continue:</div>
+              {tenants.map((t) => (
+                <button key={t.tenant_id} className="settings__tenant" onClick={() => pickTenant(t)}>
+                  <span className="settings__tenantname">{t.name}</span>
+                  {t.roles.length ? (
+                    <span className="chip">{t.roles.join(", ")}</span>
+                  ) : null}
+                </button>
+              ))}
+              <button className="btn btn--ghost settings__btn" onClick={clearToken}>
+                Cancel
               </button>
             </div>
           ) : (

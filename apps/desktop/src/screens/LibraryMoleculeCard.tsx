@@ -1,6 +1,7 @@
 import type { LibraryMolecule } from "../lib/api";
 import { MoleculeDepiction } from "../components/MoleculeDepiction";
 import { usePalette } from "../components/CommandPalette";
+import { useInspector } from "../components/MoleculeInspector";
 
 function fmt(v: number | boolean | string | undefined): string | null {
   if (v === undefined || v === null || v === "") return null;
@@ -19,11 +20,19 @@ export function LibraryMoleculeCard({ mol }: { mol: LibraryMolecule }) {
     .slice(0, 3);
 
   const { openFor } = usePalette();
+  const { inspect } = useInspector();
   return (
     <article className="molcard card">
       <div className="molcard__head">
         <span className="molcard__mod">{mol.name || "untitled"}</span>
         <span className="chip">{mol.source}</span>
+        <button
+          className="molcard__cmdk"
+          title="Inspect (med-chem deep-dive)"
+          onClick={() => inspect({ smiles: mol.canonical_smiles, name: mol.name })}
+        >
+          🔬
+        </button>
         <button
           className="molcard__cmdk"
           title="Actions (⌘K)"

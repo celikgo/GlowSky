@@ -28,6 +28,21 @@ def test_validate_and_profile_endpoints():
         assert bad.status_code == 422
 
 
+def test_assess_endpoint_bundles_the_expert_layer():
+    with TestClient(app) as client:
+        r = client.post("/molecules/assess", json={"smiles": "CC(=O)Oc1ccccc1C(=O)O"})  # aspirin
+        assert r.status_code == 200
+        body = r.json()
+        # The four expert sections are present and shaped.
+        assert 0.0 <= body["mpo"]["score"] <= 1.0 and body["mpo"]["limiting"]
+        assert "lipinski" in body["rules"]["rules"]
+        assert body["synthesizability"]["best_disconnection"]["reaction"] == "esterification"
+        assert "pains" in body["alerts"]
+
+        bad = client.post("/molecules/assess", json={"smiles": "garbage(("})
+        assert bad.status_code == 422
+
+
 def test_conformer_endpoint_returns_3d_molblock():
     with TestClient(app) as client:
         r = client.post("/molecules/conformer", json={"smiles": "CC(=O)Oc1ccccc1C(=O)O"})

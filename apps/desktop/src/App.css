@@ -1275,3 +1275,131 @@
   text-align: center;
   color: var(--text-tertiary);
 }
+
+/* --- Molecule inspector (med-chem deep-dive) -------------------------------- */
+
+.inspector {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 94vw);
+  max-height: 88vh;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.inspector__body {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  padding: 16px;
+  overflow-y: auto;
+}
+@media (max-width: 720px) {
+  .inspector__body {
+    grid-template-columns: 1fr;
+  }
+}
+.inspector__structure {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inspector__smiles {
+  color: var(--text-secondary);
+  font-size: 12px;
+  word-break: break-all;
+}
+.inspector__panels {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.inspector__state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  padding: 24px 0;
+}
+.inspector__state--error {
+  color: var(--danger);
+}
+.inspector__section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--bg);
+}
+.inspector__sectionhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.inspector__sectiontitle {
+  font-weight: 800;
+  font-size: 14px;
+}
+.inspector__bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.inspector__bar {
+  display: grid;
+  grid-template-columns: 110px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.inspector__barlabel {
+  color: var(--text-secondary);
+}
+.inspector__barlabel.is-limiting {
+  color: var(--warning);
+  font-weight: 700;
+}
+.inspector__bartrack {
+  height: 8px;
+  background: var(--bg-active);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.inspector__barfill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+}
+.inspector__barfill.is-limiting {
+  background: var(--warning);
+}
+.inspector__barval {
+  text-align: right;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.inspector__note {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.inspector__route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.inspector__arrow {
+  color: var(--text-tertiary);
+}
+.inspector__rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

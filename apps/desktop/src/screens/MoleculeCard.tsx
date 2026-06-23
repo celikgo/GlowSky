@@ -1,6 +1,7 @@
 import type { Candidate } from "../lib/api";
 import { MoleculeDepiction } from "../components/MoleculeDepiction";
 import { usePalette } from "../components/CommandPalette";
+import { useInspector } from "../components/MoleculeInspector";
 
 function num(v: number | boolean | undefined): string {
   return typeof v === "number" ? v.toString() : "—";
@@ -20,6 +21,8 @@ export function MoleculeCard({
   const p = candidate.properties;
   const selectable = onToggleSelect !== undefined;
   const { openFor } = usePalette();
+  const { inspect } = useInspector();
+  const name = candidate.modification || "analog";
   return (
     <article className={`molcard card ${selected ? "molcard--selected" : ""}`}>
       <div className="molcard__head">
@@ -34,10 +37,15 @@ export function MoleculeCard({
         </span>
         <button
           className="molcard__cmdk"
+          title="Inspect (med-chem deep-dive)"
+          onClick={() => inspect({ smiles: candidate.smiles, name })}
+        >
+          🔬
+        </button>
+        <button
+          className="molcard__cmdk"
           title="Actions (⌘K)"
-          onClick={() =>
-            openFor({ smiles: candidate.smiles, name: candidate.modification || "analog" })
-          }
+          onClick={() => openFor({ smiles: candidate.smiles, name })}
         >
           ⌘K
         </button>

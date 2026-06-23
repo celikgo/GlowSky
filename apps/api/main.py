@@ -70,7 +70,9 @@ from services.chemistry.adapters import BackendNotConfigured
 from services.chemistry.adapters.wiring import configure_backends
 from services.chemistry import io as chem_io
 from services.chemistry.conformers import conformer_molblock
-from services.chemistry.properties import profile
+from services.chemistry.medchem import medchem_rules, mpo_score
+from services.chemistry.properties import profile, structural_alerts
+from services.chemistry.retrosynthesis import synthesizability
 from services.chemistry.validation import validate_and_canonicalize
 from services.reporting import build_markdown, notebook_json
 from services.core.auth import Principal, audit
@@ -750,6 +752,28 @@ def profile_molecule(
         "canonical_smiles": result.canonical_smiles,
         "inchikey": result.inchikey,
         "properties": profile(result.canonical_smiles),
+    }
+
+
+@app.post("/molecules/assess")
+def assess_molecule(
+    req: ProfileRequest, principal: Principal = Depends(current_principal)
+) -> dict:
+    """The medicinal-chemistry deep-dive for one molecule — the expert layer surfaced for the
+    inspector: MPO desirability (with the limiting property), the drug-likeness rule battery,
+    a synthesizability verdict (SA + one-step route), and structural alerts. All deterministic."""
+    result = validate_and_canonicalize(req.smiles)
+    if not result.valid:
+        raise HTTPException(status_code=422, detail=f"invalid molecule: {result.error}")
+    smiles = result.canonical_smiles
+    return {
+        "canonical_smiles": smiles,
+        "inchikey": result.inchikey,
+        "properties": profile(smiles),
+        "mpo": mpo_score(smiles),
+        "rules": medchem_rules(smiles),
+        "synthesizability": synthesizability(smiles),
+        "alerts": structural_alerts(smiles),
     }
 
 

@@ -7,6 +7,11 @@ import {
   type ComposerCommand,
   type PaletteTarget,
 } from "./components/CommandPalette";
+import {
+  MoleculeInspector,
+  InspectContext,
+  type InspectTarget,
+} from "./components/MoleculeInspector";
 import { ComposerScreen, type ComposerInject } from "./screens/ComposerScreen";
 import { DesignScreen } from "./screens/DesignScreen";
 import { LibraryScreen } from "./screens/LibraryScreen";
@@ -40,6 +45,10 @@ export default function App() {
     setPaletteOpen(true);
   }, []);
 
+  // Molecule inspector (medicinal-chemistry deep-dive), openable from any card.
+  const [inspectTarget, setInspectTarget] = useState<InspectTarget | null>(null);
+  const inspect = useCallback((t: InspectTarget) => setInspectTarget(t), []);
+
   // Global Cmd/Ctrl+K toggles the palette (works even while typing — a deliberate chord).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -61,6 +70,7 @@ export default function App() {
 
   return (
     <PaletteContext.Provider value={{ openFor }}>
+     <InspectContext.Provider value={{ inspect }}>
       <div className="app">
         <Sidebar active={nav} onNavigate={setNav} />
         <main className="app__main">
@@ -95,6 +105,8 @@ export default function App() {
           setPaletteOpen(false);
         }}
       />
+      <MoleculeInspector target={inspectTarget} onClose={() => setInspectTarget(null)} />
+     </InspectContext.Provider>
     </PaletteContext.Provider>
   );
 }

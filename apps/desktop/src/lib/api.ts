@@ -207,6 +207,61 @@ export interface DockResult {
   pocket: { center: number[]; size: number[] };
 }
 
+// --- molecule assessment (the medicinal-chemistry deep-dive) -----------------
+
+export interface MpoAssessment {
+  score: number;
+  profile: string;
+  desirability: Record<string, number>;
+  limiting: string | null;
+}
+
+export interface RuleResult {
+  pass: boolean;
+  violations: string[];
+}
+
+export interface RuleBattery {
+  molar_refractivity: number;
+  heteroatoms: number;
+  rules: Record<string, RuleResult>;
+  passed: string[];
+  n_passed: number;
+}
+
+export interface Disconnection {
+  reaction: string;
+  precursors: string[];
+  all_building_blocks: boolean;
+}
+
+export interface Synthesizability {
+  sa_score: number;
+  sa_label: "easy" | "moderate" | "hard";
+  synthesizable: boolean;
+  n_disconnections: number;
+  route_found: boolean;
+  best_disconnection: Disconnection | null;
+  assessment: string;
+}
+
+export interface Alerts {
+  pains: string[];
+  has_pains: boolean;
+  brenk: string[];
+  has_brenk: boolean;
+}
+
+export interface Assessment {
+  canonical_smiles: string;
+  inchikey: string;
+  properties: Record<string, number | boolean>;
+  mpo: MpoAssessment;
+  rules: RuleBattery;
+  synthesizability: Synthesizability;
+  alerts: Alerts;
+}
+
 // --- tools -------------------------------------------------------------------
 
 export interface JsonSchemaProp {
@@ -514,6 +569,11 @@ export const api = {
       "/molecules/profile",
       { method: "POST", body: JSON.stringify({ smiles }) },
     ),
+  assess: (smiles: string) =>
+    request<Assessment>("/molecules/assess", {
+      method: "POST",
+      body: JSON.stringify({ smiles }),
+    }),
   conformer: (smiles: string) =>
     request<Conformer>("/molecules/conformer", {
       method: "POST",

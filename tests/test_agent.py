@@ -28,7 +28,11 @@ async def test_design_loop_end_to_end():
             assert c.properties["logp"] <= 3.0
             assert c.properties["has_pains"] is False
 
-    # Ranking: passing candidates sort ahead; sorted by score within.
+    # Ranking: passing candidates sort ahead; sorted by score within. The score is the MPO
+    # desirability (medicinal-chemistry ranking), surfaced on each candidate's properties.
+    for c in result.candidates:
+        assert "mpo" in c.properties and 0.0 <= c.properties["mpo"] <= 1.0
+        assert c.score == c.properties["mpo"]
     passed = [c for c in result.candidates if c.passed_filters]
     assert passed == sorted(passed, key=lambda c: c.score, reverse=True)
 

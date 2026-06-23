@@ -20,6 +20,7 @@ from services.agent.schemas import (
     DesignRunResult,
     ToolCallRecord,
 )
+from services.chemistry.medchem import mpo_from_descriptors
 from services.llm_gateway.gateway import LLMGateway
 from services.llm_gateway.types import CompletionRequest, TaskClass
 from services.tools.catalog import build_default_registry
@@ -59,6 +60,17 @@ class DesignOrchestrator:
             return DesignPlan(rationale="fallback plan (model returned unparseable JSON)")
 
     @staticmethod
+    def _mpo_profile(c: DesignConstraints) -> str:
+        """Pick the MPO desirability profile from the goal's MW ceiling: a tight MW target lands
+        in fragment / lead space, otherwise score against the oral drug-like profile."""
+        if c.mw_max is not None:
+            if c.mw_max <= 300:
+                return "fragment"
+            if c.mw_max <= 350:
+                return "lead"
+        return "oral"
+
+    @staticmethod
     def _passes(props: dict, c: DesignConstraints) -> bool:
         if c.mw_max is not None and props["mw"] > c.mw_max:
             return False
@@ -76,7 +88,8 @@ class DesignOrchestrator:
         kept = [c for c in candidates if c.passed_filters]
         summary = "\n".join(
             f"{c.modification} {c.smiles} (MW {c.properties['mw']}, "
-            f"logP {c.properties['logp']}, QED {c.properties['qed']})"
+            f"logP {c.properties['logp']}, QED {c.properties['qed']}, "
+            f"MPO {c.properties.get('mpo')})"
             for c in kept[:5]
         )
         req = CompletionRequest(
@@ -164,10 +177,16 @@ class DesignOrchestrator:
             props = res.output
             profile_ms += res.record.duration_ms
             cache_hits += int(res.record.cache_hit)
+            # Rank by multi-parameter optimization (MPO) desirability toward the target profile,
+            # not raw QED — the way a medicinal chemist actually prioritises. We surface both:
+            # `mpo` (and its limiting property) ride in properties; the MPO score drives ranking.
+            mpo = mpo_from_descriptors(props, self._mpo_profile(plan.constraints))
+            props["mpo"] = mpo["score"]
+            props["mpo_limiting"] = mpo["limiting"]
             passed = self._passes(props, plan.constraints)
             cand = Candidate(
                 smiles=a["smiles"], inchikey=a["inchikey"], modification=a["modification"],
-                properties=props, passed_filters=passed, score=props["qed"],
+                properties=props, passed_filters=passed, score=mpo["score"],
             )
             candidates.append(cand)
             # Stream each candidate the moment it's profiled (generation order).

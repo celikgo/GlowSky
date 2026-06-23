@@ -121,12 +121,13 @@ class MockProvider:
             f"Generated {n} validated analogs; {kept} passed the requested filters.",
         ]
         if top:
-            lines.append("Top candidates by QED:")
+            lines.append("Top candidates by MPO desirability:")
             for c in top[:3]:
                 p = c.get("properties", {})
+                mpo = f", MPO {p.get('mpo')}" if p.get("mpo") is not None else ""
                 lines.append(
                     f"  • {c.get('modification', '?')} — {c['smiles']} "
-                    f"(MW {p.get('mw')}, logP {p.get('logp')}, QED {p.get('qed')})"
+                    f"(MW {p.get('mw')}, logP {p.get('logp')}, QED {p.get('qed')}{mpo})"
                 )
         lines.append(
             "[offline mock synthesis — connect a provider for real chemical reasoning]"

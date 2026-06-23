@@ -3,7 +3,7 @@ import { api, type Health } from "../lib/api";
 
 type Status = "checking" | "ok" | "down";
 
-export function TopBar({ title }: { title: string }) {
+export function TopBar({ title, onOpenPalette }: { title: string; onOpenPalette: () => void }) {
   const [status, setStatus] = useState<Status>("checking");
   const [health, setHealth] = useState<Health | null>(null);
 
@@ -38,11 +38,16 @@ export function TopBar({ title }: { title: string }) {
   return (
     <header className="topbar">
       <div className="topbar__title">{title}</div>
-      <div className="health" title={api.base}>
-        <span
-          className={`health__dot ${status === "ok" ? "health__dot--ok" : status === "down" ? "health__dot--down" : ""}`}
-        />
-        {label}
+      <div className="topbar__right">
+        <button className="topbar__cmdk" onClick={onOpenPalette} title="Command palette (⌘K)">
+          <span className="topbar__kbd">⌘K</span>
+        </button>
+        <div className="health" title={api.base}>
+          <span
+            className={`health__dot ${status === "ok" ? "health__dot--ok" : status === "down" ? "health__dot--down" : ""}`}
+          />
+          {label}
+        </div>
       </div>
     </header>
   );

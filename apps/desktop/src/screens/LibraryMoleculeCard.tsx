@@ -1,5 +1,6 @@
 import type { LibraryMolecule } from "../lib/api";
 import { MoleculeDepiction } from "../components/MoleculeDepiction";
+import { usePalette } from "../components/CommandPalette";
 
 function fmt(v: number | boolean | string | undefined): string | null {
   if (v === undefined || v === null || v === "") return null;
@@ -17,11 +18,19 @@ export function LibraryMoleculeCard({ mol }: { mol: LibraryMolecule }) {
     .filter((k) => !PROMOTED.includes(k))
     .slice(0, 3);
 
+  const { openFor } = usePalette();
   return (
     <article className="molcard card">
       <div className="molcard__head">
         <span className="molcard__mod">{mol.name || "untitled"}</span>
         <span className="chip">{mol.source}</span>
+        <button
+          className="molcard__cmdk"
+          title="Actions (⌘K)"
+          onClick={() => openFor({ smiles: mol.canonical_smiles, name: mol.name })}
+        >
+          ⌘K
+        </button>
       </div>
       <MoleculeDepiction smiles={mol.canonical_smiles} />
       <div className="molcard__smiles mono">{mol.canonical_smiles}</div>

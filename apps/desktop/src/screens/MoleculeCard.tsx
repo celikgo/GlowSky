@@ -1,5 +1,6 @@
 import type { Candidate } from "../lib/api";
 import { MoleculeDepiction } from "../components/MoleculeDepiction";
+import { usePalette } from "../components/CommandPalette";
 
 function num(v: number | boolean | undefined): string {
   return typeof v === "number" ? v.toString() : "—";
@@ -18,6 +19,7 @@ export function MoleculeCard({
 }) {
   const p = candidate.properties;
   const selectable = onToggleSelect !== undefined;
+  const { openFor } = usePalette();
   return (
     <article className={`molcard card ${selected ? "molcard--selected" : ""}`}>
       <div className="molcard__head">
@@ -30,6 +32,15 @@ export function MoleculeCard({
         <span className={`chip ${candidate.passed_filters ? "chip--success" : "chip--danger"}`}>
           {candidate.passed_filters ? "passed" : "filtered"}
         </span>
+        <button
+          className="molcard__cmdk"
+          title="Actions (⌘K)"
+          onClick={() =>
+            openFor({ smiles: candidate.smiles, name: candidate.modification || "analog" })
+          }
+        >
+          ⌘K
+        </button>
       </div>
       <MoleculeDepiction smiles={candidate.smiles} />
       <div className="molcard__smiles mono">{candidate.smiles}</div>

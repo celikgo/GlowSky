@@ -42,6 +42,32 @@ class DesignRequest(BaseModel):
     )
 
 
+class ChatMessage(BaseModel):
+    role: str = Field(..., examples=["user", "assistant"])
+    content: str
+
+
+class ChatContextMolecule(BaseModel):
+    smiles: str = Field(..., examples=["c1ccccc1C(=O)O"])
+    name: str | None = None
+
+
+class ChatRequest(BaseModel):
+    """One Composer turn. The client sends the full message history each turn (stateless
+    server, mirroring /agent/design); `seed_smiles` carries the working molecule forward and
+    `context_molecules` are the `@`-attached references."""
+
+    messages: list[ChatMessage] = Field(
+        ..., examples=[[{"role": "user", "content": "make 8 analogs, MW<300, no PAINS"}]]
+    )
+    seed_smiles: str | None = Field(default=None, examples=["c1ccccc1C(=O)O"])
+    context_molecules: list[ChatContextMolecule] = Field(default_factory=list)
+    persist: bool = True
+    project_id: str | None = Field(
+        default=None, description="Scope a resulting design run + its molecules to this project."
+    )
+
+
 # --- Auth & tenancy -----------------------------------------------------------
 
 

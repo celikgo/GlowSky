@@ -14,6 +14,7 @@ from services.chemistry.bioisosteres import bioisosteric_analogs
 from services.chemistry.generative import generate_analogs
 from services.chemistry.medchem import medchem_rules, mpo_score
 from services.chemistry.mmp import matched_pairs, sar_transforms
+from services.chemistry.retrosynthesis import retrosynthesize, synthesizability
 from services.chemistry.properties import compute_descriptors, druglikeness, profile, structural_alerts
 from services.chemistry.scaffolds import murcko_scaffold
 from services.chemistry.search import substructure_search
@@ -113,6 +114,22 @@ def build_default_registry() -> ToolRegistry:
         name="sa_score", version=V, category=ToolCategory.PROPERTY,
         summary="Synthetic accessibility (Ertl & Schuffenhauer), 1=easy..10=hard.",
         handler=sa_score, input_schema=_obj(canonical_smiles=_STR),
+    ))
+    add(ToolSpec(
+        name="retrosynthesize", version=V, category=ToolCategory.CHEMINFORMATICS,
+        summary="One-step retrosynthetic disconnections via named reactions (amide "
+                "coupling, Suzuki, esterification, reductive amination, ...) + precursors.",
+        handler=retrosynthesize,
+        input_schema={"type": "object",
+                      "properties": {"canonical_smiles": _STR,
+                                     "max_routes": {"type": "integer"}},
+                      "required": ["canonical_smiles"]},
+    ))
+    add(ToolSpec(
+        name="synthesizability", version=V, category=ToolCategory.PROPERTY,
+        summary="Synthesizability assessment: SA score + whether a known one-step route "
+                "into building-block-like precursors exists.",
+        handler=synthesizability, input_schema=_obj(canonical_smiles=_STR),
     ))
     add(ToolSpec(
         name="mpo_score", version=V, category=ToolCategory.PROPERTY,

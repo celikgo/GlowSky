@@ -36,10 +36,12 @@ async def test_design_loop_end_to_end():
     passed = [c for c in result.candidates if c.passed_filters]
     assert passed == sorted(passed, key=lambda c: c.score, reverse=True)
 
-    # Provenance: a full trace and resolved (secret-free) models.
+    # Provenance: a full trace and resolved (secret-free) models. Generation runs both
+    # strategies — R-group enumeration and bioisosteric/scaffold-hop replacement.
     assert [t.tool for t in result.trace] == [
         "validate_molecule",
         "generate_analogs",
+        "bioisosteric_replacement",
         "profile_molecule",
     ]
     assert result.models_used["reasoning"] == "mock/mock"

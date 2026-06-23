@@ -48,7 +48,12 @@ export function MoleculeCard({
         <span className="chip">MW {num(p.mw)}</span>
         <span className="chip">logP {num(p.logp)}</span>
         <span className="chip">TPSA {num(p.tpsa)}</span>
-        <span className="chip chip--accent">QED {num(p.qed)}</span>
+        <span className="chip">QED {num(p.qed)}</span>
+        {p.mpo !== undefined ? (
+          <span className="chip chip--accent" title="multi-parameter optimization desirability">
+            MPO {num(p.mpo)}
+          </span>
+        ) : null}
         {p.has_pains ? <span className="chip chip--danger">PAINS</span> : null}
         {p.lipinski_pass ? <span className="chip chip--success">Ro5</span> : null}
       </div>

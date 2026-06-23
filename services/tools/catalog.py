@@ -11,6 +11,7 @@ from services.chemistry.adapters.docking import dock
 from services.chemistry.conformers import generate_conformers
 from services.chemistry.fingerprints import fingerprint
 from services.chemistry.generative import generate_analogs
+from services.chemistry.medchem import medchem_rules, mpo_score
 from services.chemistry.properties import compute_descriptors, druglikeness, profile, structural_alerts
 from services.chemistry.scaffolds import murcko_scaffold
 from services.chemistry.search import substructure_search
@@ -110,6 +111,21 @@ def build_default_registry() -> ToolRegistry:
         name="sa_score", version=V, category=ToolCategory.PROPERTY,
         summary="Synthetic accessibility (Ertl & Schuffenhauer), 1=easy..10=hard.",
         handler=sa_score, input_schema=_obj(canonical_smiles=_STR),
+    ))
+    add(ToolSpec(
+        name="mpo_score", version=V, category=ToolCategory.PROPERTY,
+        summary="Multi-parameter optimization desirability (0-1) vs a profile "
+                "(oral/lead/fragment) + the limiting property.",
+        handler=mpo_score,
+        input_schema={"type": "object",
+                      "properties": {"canonical_smiles": _STR, "profile": _STR},
+                      "required": ["canonical_smiles"]},
+    ))
+    add(ToolSpec(
+        name="medchem_rules", version=V, category=ToolCategory.FILTERING,
+        summary="Drug-/lead-/fragment-likeness rule battery: Lipinski, Veber, Ghose, "
+                "Egan, Muegge, lead-like, Rule of 3 — pass/fail + violations.",
+        handler=medchem_rules, input_schema=_obj(canonical_smiles=_STR),
     ))
 
     # --- Generative (CPU-heavy, emits structures -> firewall) -----------

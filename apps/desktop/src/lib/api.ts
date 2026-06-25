@@ -149,6 +149,12 @@ export interface TokenResponse {
   tenant_scoped: boolean;
 }
 
+export interface TenantInfo {
+  tenant_id: string;
+  name: string;
+  roles: string[];
+}
+
 export interface Health {
   status: string;
   routes: Record<string, string>;
@@ -451,6 +457,22 @@ export const api = {
     });
     setToken(t.access_token);
     setRefreshToken(t.refresh_token ?? null);
+    return t;
+  },
+
+  /** List the signed-in user's tenants (for the picker shown after an unscoped login). Uses the
+   *  current (login) token. */
+  listTenants: () => request<TenantInfo[]>("/auth/tenants"),
+
+  /** Scope the session to a tenant; stores the tenant-scoped access token. Preserves the existing
+   *  refresh token (carbon-auth's select-tenant doesn't reissue one — it's tenant-agnostic). */
+  async selectTenant(tenantId: string): Promise<TokenResponse> {
+    const t = await request<TokenResponse>("/auth/select-tenant", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: tenantId }),
+    });
+    setToken(t.access_token);
+    if (t.refresh_token) setRefreshToken(t.refresh_token);
     return t;
   },
 

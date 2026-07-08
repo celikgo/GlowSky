@@ -372,6 +372,54 @@ export interface ToolRunResult {
   provenance: ToolProvenance;
 }
 
+// --- analysis results (retrosynthesis / MMP / SAR — the `output` of the like-named tools) ---
+
+/** Output of the `retrosynthesize` tool: one-step disconnections of a target, most tractable
+ *  (all-building-block) routes first. Each disconnection reuses the `Disconnection` shape above. */
+export interface RetrosynthesisResult {
+  target: string;
+  n_disconnections: number;
+  disconnections: Disconnection[];
+}
+
+/** One matched molecular pair. The Δ (`value_a`/`value_b`/`delta`) is present only when the
+ *  request carried a `property`. */
+export interface MatchedPair {
+  a: string;
+  b: string;
+  transformation: string;
+  context: string;
+  value_a?: number;
+  value_b?: number;
+  delta?: number;
+}
+
+/** Output of the `matched_pairs` tool. */
+export interface MatchedPairsResult {
+  property: string | null;
+  n_molecules: number;
+  n_pairs: number;
+  pairs: MatchedPair[];
+}
+
+/** One aggregated SAR transform: a transformation's effect on a property across the set. */
+export interface SarTransform {
+  transformation: string;
+  n: number;
+  mean_delta: number;
+  median_delta: number;
+  min_delta: number;
+  max_delta: number;
+}
+
+/** Output of the `sar_transforms` tool, ranked by support then effect magnitude. */
+export interface SarTransformsResult {
+  property: string;
+  n_molecules: number;
+  n_transforms: number;
+  transforms: SarTransform[];
+}
+
 // --- settings (BYO-LLM) ------------------------------------------------------
 
 export interface ProviderInfo {

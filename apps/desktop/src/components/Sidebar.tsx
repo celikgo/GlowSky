@@ -1,10 +1,20 @@
-export type NavKey = "composer" | "design" | "library" | "docking" | "tools" | "settings";
+export type NavKey =
+  | "composer"
+  | "design"
+  | "library"
+  | "docking"
+  | "retro"
+  | "sar"
+  | "tools"
+  | "settings";
 
 const ITEMS: { key: NavKey; label: string; icon: string }[] = [
   { key: "composer", label: "Composer", icon: "✦" },
   { key: "design", label: "Design", icon: "✷" },
   { key: "library", label: "Library", icon: "▦" },
   { key: "docking", label: "Docking", icon: "⬡" },
+  { key: "retro", label: "Retrosynthesis", icon: "⇋" },
+  { key: "sar", label: "SAR", icon: "⊞" },
   { key: "tools", label: "Tools", icon: "⚗" },
   { key: "settings", label: "Settings", icon: "⚙" },
 ];

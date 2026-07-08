@@ -1466,3 +1466,115 @@
 .settings__tenantname {
   font-weight: 700;
 }
+
+/* --- analysis screens (Retrosynthesis + Matched Pairs/SAR) ------------------ */
+.analysis {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 24px 80px;
+}
+.analysis__form {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.analysis__hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin: 0;
+  line-height: 1.5;
+}
+.analysis__inputrow {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+.analysis__inputrow .field {
+  flex: 1;
+}
+.analysis__num {
+  width: 120px;
+  flex: 0 0 auto;
+}
+
+/* retrosynthesis routes: target => precursors */
+.retro__routes {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.retro__route {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.retro__routehead {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.retro__routen {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+.retro__tree {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.retro__node {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+.retro__precursors {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.retro__arrow {
+  font-size: 26px;
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+.retro__smiles {
+  max-width: 220px;
+  word-break: break-all;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* MMP/SAR tables */
+.datatable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.datatable th,
+.datatable td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.datatable th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.datatable td {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+.datatable td.datatable__pos {
+  color: var(--success);
+}
+.datatable td.datatable__neg {
+  color: var(--danger);
+}

@@ -16,6 +16,8 @@ import { ComposerScreen, type ComposerInject } from "./screens/ComposerScreen";
 import { DesignScreen } from "./screens/DesignScreen";
 import { LibraryScreen } from "./screens/LibraryScreen";
 import { DockingScreen } from "./screens/DockingScreen";
+import { RetroScreen } from "./screens/RetroScreen";
+import { SarScreen } from "./screens/SarScreen";
 import { ToolsScreen } from "./screens/ToolsScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import "./App.css";
@@ -25,6 +27,8 @@ const TITLES: Record<NavKey, string> = {
   design: "Design",
   library: "Library",
   docking: "Docking",
+  retro: "Retrosynthesis",
+  sar: "Matched Pairs & SAR",
   tools: "Tools",
   settings: "Settings",
 };
@@ -84,6 +88,10 @@ export default function App() {
               <LibraryScreen />
             ) : nav === "docking" ? (
               <DockingScreen />
+            ) : nav === "retro" ? (
+              <RetroScreen />
+            ) : nav === "sar" ? (
+              <SarScreen />
             ) : nav === "tools" ? (
               <ToolsScreen />
             ) : (

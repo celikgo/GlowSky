@@ -2,15 +2,15 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-113%20passing-brightgreen.svg)](tests/)
-[![Status: Phase 0](https://img.shields.io/badge/status-Phase%200%20scaffold-orange.svg)](docs/09-roadmap.md)
+[![Tests](https://img.shields.io/badge/tests-pytest%20%2B%20vitest-brightgreen.svg)](tests/)
+[![Status: Early access](https://img.shields.io/badge/status-early%20access-blue.svg)](docs/09-roadmap.md)
 [![Code style: RDKit](https://img.shields.io/badge/chemistry-RDKit-26a69a.svg)](https://www.rdkit.org/)
 
 **The AI-native workspace for small-molecule drug design — "Cursor for Chemists."**
 
 Glowsky is an AI-first environment where medicinal chemists and computational drug-discovery researchers design, optimize, analyze, and manage small molecules through natural language and intelligent agents — combining IDE-grade ergonomics, deep chemistry tooling (RDKit, docking, ADMET, retrosynthesis, literature RAG), and **Bring-Your-Own-LLM** support, available as SaaS and self-hosted.
 
-> **Status:** Phase 0 scaffold. The product & architecture docs live in `docs/`; a runnable backend vertical slice (LLM gateway + chemistry + agent design loop) lives in `services/`, `apps/`, and `tests/`. See **Getting Started** below.
+> **Status:** Early access — self-hostable today; a managed/hosted SaaS is not GA yet. A working vertical slice runs end to end: the FastAPI backend (BYO-LLM gateway + validated chemistry tools + the agentic design loop) under `services/` and `apps/api/`, plus a Tauri desktop app (`apps/desktop/`) with design, retrosynthesis, SAR/matched-pairs, docking and library screens and a molecule inspector. Product & architecture docs live in `docs/`. See **Getting Started** below.
 
 ---
 
@@ -39,9 +39,9 @@ Express your design *intent* in natural language; a chemistry-aware agent **plan
 
 ---
 
-## Getting Started (Phase 0 scaffold)
+## Getting Started
 
-Phase 0 proves the two hardest integrations end-to-end: the **BYO-LLM gateway** and
+The runnable slice proves the two hardest integrations end-to-end: the **BYO-LLM gateway** and
 **deterministic chemistry-as-tools**, wired through an **agentic design loop**. It runs
 **fully offline** (a built-in mock LLM) so no API key is needed to try it.
 

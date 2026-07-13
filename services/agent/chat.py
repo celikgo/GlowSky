@@ -24,8 +24,8 @@ from dataclasses import dataclass
 
 from services.agent.orchestrator import DesignOrchestrator
 from services.agent.schemas import DesignRunResult
+from services.agent.tool_loop import ToolCallingAgent
 from services.llm_gateway.gateway import LLMGateway
-from services.llm_gateway.types import CompletionRequest, TaskClass
 from services.tools.context import ExecutionContext
 from services.tools.executor import ToolExecutionService
 
@@ -58,14 +58,6 @@ _DESIGN_CUES: tuple[str, ...] = (
     "mw <",
 )
 
-_CHAT_SYSTEM = (
-    "You are Glowsky, an AI assistant for small-molecule drug design. You help medicinal "
-    "chemists reason about molecules, properties, and design strategy. When the user wants to "
-    "generate or optimise analogs, tell them to phrase it as a design request (e.g. 'make 10 "
-    "analogs, MW<300, no PAINS') and attach or paste a seed molecule. Keep answers concise."
-)
-
-
 def looks_like_design(message: str) -> bool:
     """True when a message reads like a request to generate/optimise molecules."""
     m = message.lower()
@@ -79,17 +71,6 @@ def _last_user_message(messages: list[dict]) -> str:
     return ""
 
 
-def _context_summary(context_molecules: list[dict]) -> str:
-    if not context_molecules:
-        return ""
-    lines = [
-        f"- {m.get('name') or 'molecule'}: {m['smiles']}"
-        for m in context_molecules
-        if m.get("smiles")
-    ]
-    return "\nMolecules the user attached as context:\n" + "\n".join(lines) if lines else ""
-
-
 @dataclass
 class ChatTurnResult:
     """The outcome of one Composer turn, shaped for the API response + the next turn's state."""
@@ -98,6 +79,7 @@ class ChatTurnResult:
     text: str  # the assistant's reply (design synthesis, conversational answer, or the ask)
     seed: str | None  # the effective seed to carry into the next turn (None until one exists)
     design: DesignRunResult | None  # the full run when kind == "design", else None
+    tools: list[dict] | None = None  # tool-call trace when a conversational turn used the agent
 
 
 async def run_chat_turn(
@@ -143,13 +125,24 @@ async def run_chat_turn(
             kind="design", text=result.explanation, seed=result.parent_smiles, design=result
         )
 
-    # Conversational turn — answer through the gateway with the attached molecules as context.
-    system = _CHAT_SYSTEM + _context_summary(context_molecules)
-    req = CompletionRequest(
-        messages=[{"role": "system", "content": system}, *messages],
-        task_class=TaskClass.REASONING,
-        metadata={"mock_intent": "chat", "has_context": bool(context_molecules)},
+    # Conversational / tool-using turn — a real tool-calling agent over the FULL registry. A
+    # request like "run a retrosynthesis on this", "profile ADMET", or "dock it" now reaches the
+    # right tool (the model selects it), not just the four the design pipeline hard-codes. With no
+    # tool needed it degrades to a plain conversational reply (offline mock stays deterministic).
+    agent = ToolCallingAgent(gateway, executor)
+    result = await agent.run(
+        user,
+        ctx,
+        seed_smiles=seed or None,
+        has_context=bool(context_molecules),
+        history=messages,
+        context_molecules=context_molecules,
+        emit=emit,
     )
-    resp = await gateway.complete(req)
-    await _emit({"type": "assistant_message", "text": resp.text})
-    return ChatTurnResult(kind="chat", text=resp.text, seed=seed or None, design=None)
+    return ChatTurnResult(
+        kind="chat",
+        text=result.text,
+        seed=seed or None,
+        design=None,
+        tools=[c.as_dict() for c in result.trace] or None,
+    )

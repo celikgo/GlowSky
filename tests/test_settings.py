@@ -7,10 +7,18 @@ Credential/route endpoints are tenant-scoped, so these run under real nakitte JW
 from __future__ import annotations
 
 import pytest
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from apps.api.main import app
-from services.core.crypto import decrypt, encrypt, mask
+from services.core.config import Settings
+from services.core.crypto import (
+    InsecureSecretKeyError,
+    decrypt,
+    encrypt,
+    mask,
+    validate_secret_config,
+)
 from services.llm_gateway.credentials import CredentialResolver
 from services.llm_gateway.gateway import LLMGateway
 from services.llm_gateway.types import TaskClass
@@ -27,6 +35,25 @@ def test_encryption_round_trip_and_mask():
     assert decrypt(token) == secret
     m = mask(secret)
     assert m.startswith("sk-") and m.endswith("789") and secret not in m
+
+
+# --- secret-key fail-fast (prod must not fall back to the public in-source dev key) ----------
+
+
+def test_non_dev_environment_without_secret_key_refuses_to_boot():
+    prod = Settings(environment="production", secret_key=None)
+    with pytest.raises(InsecureSecretKeyError):
+        validate_secret_config(prod)
+
+
+def test_non_dev_environment_with_real_secret_key_is_accepted():
+    prod = Settings(environment="production", secret_key=Fernet.generate_key().decode())
+    validate_secret_config(prod)  # must not raise
+
+
+@pytest.mark.parametrize("env", ["dev", "development", "local", "test", "ci"])
+def test_dev_like_environments_tolerate_the_missing_key(env):
+    validate_secret_config(Settings(environment=env, secret_key=None))  # must not raise
 
 
 # --- credentials API ----------------------------------------------------------

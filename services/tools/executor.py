@@ -44,6 +44,11 @@ class ToolExecutionService:
         self._cache = cache or InMemoryCache()
         self._mode = mode
 
+    @property
+    def registry(self) -> ToolRegistry:
+        """The tool registry this service dispatches to (read-only accessor for the agent)."""
+        return self._reg
+
     def execute(
         self,
         name: str,

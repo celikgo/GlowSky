@@ -12,7 +12,12 @@ import re
 from typing import Protocol
 
 from services.llm_gateway.keys import KeyStore
-from services.llm_gateway.types import CompletionRequest, CompletionResponse, ModelRoute
+from services.llm_gateway.types import (
+    CompletionRequest,
+    CompletionResponse,
+    ModelRoute,
+    ToolCall,
+)
 
 
 class Provider(Protocol):
@@ -35,6 +40,11 @@ class LiteLLMProvider:
             "temperature": req.temperature,
             "max_tokens": req.max_tokens,
         }
+        # Function-calling: hand the tool schemas to the model so IT selects tools. LiteLLM
+        # normalises this across Anthropic/OpenAI/Groq/local, so the agent loop is provider-agnostic.
+        if req.tools:
+            kwargs["tools"] = req.tools
+            kwargs["tool_choice"] = req.tool_choice
         if route.provider == "local":
             kwargs["model"] = f"openai/{route.model}"
             kwargs["api_base"] = self._keys.base_url("local")
@@ -44,19 +54,66 @@ class LiteLLMProvider:
             kwargs["api_key"] = self._keys.api_key(route.provider)
 
         resp = await litellm.acompletion(**kwargs)
-        choice = resp["choices"][0]["message"]["content"] or ""
+        message = resp["choices"][0]["message"]
+        content = message.get("content") if isinstance(message, dict) else getattr(message, "content", None)
+        choice = content or ""
         usage = dict(resp.get("usage", {}) or {})
         return CompletionResponse(
             text=choice, model=f"{route.provider}/{route.model}",
             provider=route.provider, usage=usage,
+            tool_calls=self._parse_tool_calls(message),
         )
+
+    @staticmethod
+    def _parse_tool_calls(message) -> list[ToolCall]:
+        raw = message.get("tool_calls") if isinstance(message, dict) else getattr(message, "tool_calls", None)
+        if not raw:
+            return []
+        calls: list[ToolCall] = []
+        for tc in raw:
+            fn = tc.get("function") if isinstance(tc, dict) else getattr(tc, "function", None)
+            name = (fn.get("name") if isinstance(fn, dict) else getattr(fn, "name", None)) or ""
+            raw_args = (fn.get("arguments") if isinstance(fn, dict) else getattr(fn, "arguments", None)) or "{}"
+            try:
+                args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                args = {}
+            call_id = (tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)) or f"call_{name}"
+            if name:
+                calls.append(ToolCall(id=call_id, name=name, arguments=args))
+        return calls
 
 
 class MockProvider:
     """Offline stand-in. Behaviour is selected by request.metadata['mock_intent']."""
 
+    # Cue -> tool the mock will pick when that word appears in an agent turn's goal. Deterministic
+    # stand-in for what a real function-calling model does; lets the tool-calling loop (and every
+    # otherwise-unreachable tool it can now select) be exercised offline with zero API keys.
+    _AGENT_TOOL_CUES: tuple[tuple[str, str], ...] = (
+        ("retro", "retrosynthesize"),
+        ("disconnect", "retrosynthesize"),
+        ("synthesi", "synthesizability"),
+        ("admet", "predict_admet"),
+        ("conformer", "generate_conformers"),
+        ("3d", "generate_conformers"),
+        ("descriptor", "compute_descriptors"),
+        ("murcko", "murcko_scaffold"),
+        ("fingerprint", "fingerprint"),
+        ("alert", "structural_alerts"),
+        ("pains", "structural_alerts"),
+        ("medchem", "medchem_rules"),
+        ("rule", "medchem_rules"),
+        ("sa score", "sa_score"),
+        ("accessib", "sa_score"),
+        ("dock", "dock"),
+        ("substructure", "substructure_search"),
+    )
+
     async def complete(self, req: CompletionRequest, route: ModelRoute) -> CompletionResponse:
         intent = req.metadata.get("mock_intent", "echo")
+        if intent == "agent":
+            return self._agent_step(req)
         if intent == "design_plan":
             text = json.dumps(self._design_plan(req.metadata.get("goal", "")))
         elif intent == "synthesize":
@@ -68,6 +125,68 @@ class MockProvider:
         return CompletionResponse(
             text=text, model="mock/mock", provider="mock",
             usage={"prompt_tokens": 0, "completion_tokens": 0},
+        )
+
+    def _agent_step(self, req: CompletionRequest) -> CompletionResponse:
+        """One deterministic step of the offline tool-calling loop.
+
+        Turn 1: if the goal names a capability we can serve and a seed molecule is available,
+        emit a tool call for it (exactly what a real model does via function-calling). Later turns
+        (tool results already gathered) return a final text answer. With no tool cue it degrades to
+        the same offline conversational reply as the plain chat mock — so non-tool turns are a no-op.
+        """
+        meta = req.metadata
+        tools_used = meta.get("tools_used", [])
+        schemas = {
+            t["function"]["name"]: t["function"].get("parameters", {})
+            for t in req.tools if "function" in t
+        }
+        seed = meta.get("seed_smiles")
+        if not tools_used and seed:
+            selection = self._select_agent_tool(meta.get("user", ""), schemas)
+            if selection is not None:
+                name, schema = selection
+                call = ToolCall(id="call_1", name=name, arguments=self._fill_args(schema, seed))
+                return CompletionResponse(
+                    text="", model="mock/mock", provider="mock",
+                    usage={"prompt_tokens": 0, "completion_tokens": 0}, tool_calls=[call],
+                )
+        text = self._agent_summary(tools_used) if tools_used else self._chat(meta)
+        return CompletionResponse(
+            text=text, model="mock/mock", provider="mock",
+            usage={"prompt_tokens": 0, "completion_tokens": 0},
+        )
+
+    @classmethod
+    def _select_agent_tool(cls, goal: str, schemas: dict[str, dict]) -> tuple[str, dict] | None:
+        g = goal.lower()
+        for cue, tool in cls._AGENT_TOOL_CUES:
+            if cue in g and tool in schemas:
+                return tool, schemas[tool]
+        return None
+
+    @staticmethod
+    def _fill_args(schema: dict, seed: str) -> dict:
+        """Fill a tool's required params from a single seed SMILES (mock's best effort)."""
+        props = schema.get("properties", {})
+        required = schema.get("required", []) or list(props)
+        args: dict = {}
+        for key in required:
+            spec = props.get(key, {})
+            if spec.get("type") == "array":
+                args[key] = [seed]
+            elif "smarts" in key:
+                args[key] = "c1ccccc1"
+            else:
+                args[key] = seed
+        return args
+
+    @staticmethod
+    def _agent_summary(tools_used: list[str]) -> str:
+        used = ", ".join(dict.fromkeys(tools_used)) or "no tools"
+        return (
+            f"Ran the requested chemistry tools ({used}) and summarised the results. "
+            "[offline mock — connect a provider for a model-authored synthesis]"
         )
 
     @staticmethod

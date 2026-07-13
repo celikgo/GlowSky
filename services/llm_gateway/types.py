@@ -19,12 +19,26 @@ class ModelRoute:
     task_class: TaskClass
 
 
+@dataclass(frozen=True)
+class ToolCall:
+    """One tool the model chose to invoke (function-calling). Provider-agnostic."""
+
+    id: str
+    name: str
+    arguments: dict = field(default_factory=dict)
+
+
 @dataclass
 class CompletionRequest:
     messages: list[dict]                 # [{"role": "user"|"system"|"assistant", "content": str}]
     task_class: TaskClass = TaskClass.REASONING
     temperature: float = 0.2
     max_tokens: int = 1024
+    # Function-calling: the tools the model may select this turn (OpenAI/LiteLLM tool schema),
+    # and the choice policy ("auto" | "none" | "required"). Empty tools => plain completion,
+    # so every existing caller is unaffected.
+    tools: list[dict] = field(default_factory=list)
+    tool_choice: str = "auto"
     # Hints used ONLY by the offline mock provider to pick a canned behaviour.
     metadata: dict = field(default_factory=dict)
 
@@ -35,3 +49,5 @@ class CompletionResponse:
     model: str        # "provider/model" actually used
     provider: str
     usage: dict = field(default_factory=dict)  # token counts when the provider reports them
+    # Populated when the model requested tool calls instead of (or alongside) a text answer.
+    tool_calls: list[ToolCall] = field(default_factory=list)

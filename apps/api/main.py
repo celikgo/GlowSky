@@ -86,7 +86,7 @@ from services.reporting import build_markdown, notebook_json
 from services.core.auth import Principal, audit
 from services.core.config import get_settings
 from services.core.nakitte_auth import resolve_nakitte_token
-from services.core.crypto import encrypt, mask
+from services.core.crypto import encrypt, mask, validate_secret_config
 from services.core.db import init_db, session_scope
 from services.core.models import (
     AgentRun,
@@ -107,6 +107,9 @@ from services.tools.store import get_store, is_terminal
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail-fast: a non-dev deployment MUST bring its own GLOWSKY_SECRET_KEY, else stored
+    # BYO-LLM credentials would be encrypted under the public in-source dev key. Refuse to boot.
+    validate_secret_config()
     init_db()
     # Select adapter-gated backends (ADMET/docking) per config. In eager mode this also
     # configures the in-process slow path; distributed workers self-configure on boot.
@@ -970,7 +973,10 @@ def _chat_turn_dict(turn, principal: Principal, project_id: str | None, persist:
         if persist:
             turn.design.run_id = _persist(turn.design, principal, project_id)
         design = turn.design.model_dump()
-    return {"kind": turn.kind, "text": turn.text, "seed": turn.seed, "design": design}
+    return {
+        "kind": turn.kind, "text": turn.text, "seed": turn.seed, "design": design,
+        "tools": turn.tools,
+    }
 
 
 def _persist(result, principal: Principal, project_id: str | None) -> str:

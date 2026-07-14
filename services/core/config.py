@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     def celery_eager(self) -> bool:
         return not self.redis_url
 
+    # Bounds for the DEFAULT (no-Redis) in-process stores, which have no TTL. Without a
+    # cap the InMemoryJobStore (full event log + result per job) and InMemoryCache grow
+    # monotonically until the process is OOM-killed. Both evict least-recently-used past
+    # the cap. The Redis backends instead rely on a 24h TTL and are unaffected.
+    job_store_max: int = 2048
+    result_cache_max: int = 4096
+
     # --- Container tools (extensibility) ---
     # Directory scanned for `glowsky-tool.yaml` manifests at startup. Each becomes a
     # sandboxed, agent-callable tool. Blank => no container tools loaded.

@@ -207,3 +207,36 @@ def test_design_endpoint_persists_and_returns_provenance():
         # validate -> generate_analogs -> bioisosteric_replacement -> profile
         assert len(body["trace"]) == 4
         assert body["models_used"]["reasoning"] == "mock/mock"
+
+
+def test_persisted_parent_gets_real_inchikey_so_import_dedups():
+    """A design's seed molecule must persist with its REAL InChIKey (not ""), or import
+    de-dup (which matches on inchikey) can never find it and duplicates the seed.
+
+    Fails without the fix: the parent stored inchikey="" so importing the same molecule
+    reports imported=1 / duplicates=0 and a second aspirin row appears."""
+    aspirin = "CC(=O)Oc1ccccc1C(=O)O"
+    with TestClient(app) as client:
+        pid = client.post("/projects", json={"name": "dedup proj"}).json()["id"]
+        r = client.post(
+            "/agent/design",
+            json={"goal": "make analogs", "seed_smiles": aspirin,
+                  "project_id": pid, "persist": True},
+        )
+        assert r.status_code == 200
+
+        mols = client.get(f"/projects/{pid}/molecules").json()["molecules"]
+        parent = next(m for m in mols if m["name"] == "parent")
+        assert parent["inchikey"]  # real key, not the old hardcoded ""
+
+        # Importing the same molecule now hits the parent via InChIKey de-dup.
+        lid = client.post(f"/projects/{pid}/libraries", json={"name": "starts"}).json()["id"]
+        imp = client.post(
+            f"/libraries/{lid}/import",
+            json={"format": "smiles", "content": f"{aspirin} aspirin"},
+        ).json()
+        assert imp["imported"] == 0 and imp["duplicates"] == 1
+
+        # Exactly one row carries the seed's InChIKey (the parent, reused — no duplicate).
+        after = client.get(f"/projects/{pid}/molecules").json()["molecules"]
+        assert sum(1 for m in after if m["inchikey"] == parent["inchikey"]) == 1

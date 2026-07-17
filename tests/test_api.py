@@ -229,13 +229,20 @@ def test_persisted_parent_gets_real_inchikey_so_import_dedups():
         parent = next(m for m in mols if m["name"] == "parent")
         assert parent["inchikey"]  # real key, not the old hardcoded ""
 
-        # Importing the same molecule now hits the parent via InChIKey de-dup.
+        # Importing the same molecule now hits the parent via InChIKey de-dup, so no second
+        # aspirin row is created. NB the imported/duplicates counters track library MEMBERSHIP
+        # (see test_libraries.py), not molecule identity — the parent isn't a member of this fresh
+        # library, so it's a new membership. The fix's real guarantee is molecule-level: the
+        # structure exists exactly once in the project (without the fix the ""-keyed parent can't be
+        # matched and a second aspirin row appears).
         lid = client.post(f"/projects/{pid}/libraries", json={"name": "starts"}).json()["id"]
-        imp = client.post(
+        client.post(
             f"/libraries/{lid}/import",
             json={"format": "smiles", "content": f"{aspirin} aspirin"},
-        ).json()
-        assert imp["imported"] == 0 and imp["duplicates"] == 1
+        )
+        after = client.get(f"/projects/{pid}/molecules").json()["molecules"]
+        aspirin_rows = [m for m in after if m["canonical_smiles"] == parent["canonical_smiles"]]
+        assert len(aspirin_rows) == 1  # deduped against the seed, not duplicated
 
         # Exactly one row carries the seed's InChIKey (the parent, reused — no duplicate).
         after = client.get(f"/projects/{pid}/molecules").json()["molecules"]

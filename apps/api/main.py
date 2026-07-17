@@ -788,9 +788,12 @@ def submit_batch(
 @app.get("/jobs/{job_id}")
 def get_job(job_id: str, principal: Principal = Depends(current_principal)) -> dict:
     job = get_store().get(job_id)
-    if job is None:
+    # 404 (never 403) across orgs so a job's existence never leaks between tenants —
+    # mirrors load_project/load_library/load_run in deps.py. A job carrying docking
+    # poses or a screening library must be readable only by the org that submitted it.
+    if job is None or job.get("org_id") != principal.org_id:
         raise HTTPException(status_code=404, detail=f"unknown job: {job_id}")
-    return job
+    return {k: v for k, v in job.items() if k != "org_id"}
 
 
 @app.websocket("/jobs/{job_id}/stream")
@@ -803,7 +806,7 @@ async def stream_job(ws: WebSocket, job_id: str, token: str | None = None) -> No
     resolve, mirroring the execution endpoints; an invalid token gets a `failed` frame."""
     await ws.accept()
     try:
-        _ws_principal(token)
+        principal = _ws_principal(token)
     except ValueError as exc:
         await ws.send_json({"type": "failed", "error": str(exc)})
         await ws.close()
@@ -814,12 +817,19 @@ async def stream_job(ws: WebSocket, job_id: str, token: str | None = None) -> No
     TIMEOUT_S = 120.0
     try:
         while True:
+            job = store.get(job_id)
+            # Enforce tenant isolation BEFORE relaying any events: a job belonging to
+            # another org is reported as 'unknown', identical to the not-found case, so
+            # the stream never leaks another tenant's poses/screening output or its
+            # existence. (GET /jobs/{id} makes the same check.)
+            if job is not None and job.get("org_id") != principal.org_id:
+                await ws.send_json({"type": "failed", "error": f"unknown job: {job_id}"})
+                break
             events = store.events(job_id)
             for ev in events[sent:]:
                 await ws.send_json(ev)
                 sent += 1
-            job = store.get(job_id)
-            if is_terminal(job) and sent >= len(store.events(job_id)):
+            if is_terminal(job) and sent >= len(events):
                 break
             if job is None and waited > 1.0:
                 await ws.send_json({"type": "failed", "error": f"unknown job: {job_id}"})
@@ -996,9 +1006,14 @@ def _persist(result, principal: Principal, project_id: str | None) -> str:
         )
         s.add(run)
         s.flush()  # assign run.id
+        # Store the seed with its REAL InChIKey (like every other write path) so import
+        # de-dup — which matches on inchikey — can find it. A hardcoded "" never matches,
+        # so N runs on the same seed would accumulate indistinguishable parent rows and
+        # a later SDF import of the same molecule would create a duplicate.
+        parent_key = validate_and_canonicalize(result.parent_smiles).inchikey or ""
         s.add(Molecule(
             org_id=principal.org_id, project_id=project_id, created_by=principal.user_id,
-            canonical_smiles=result.parent_smiles, inchikey="", name="parent",
+            canonical_smiles=result.parent_smiles, inchikey=parent_key, name="parent",
             source="user", origin_run_id=run.id,
         ))
         for c in result.candidates:

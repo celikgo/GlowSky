@@ -17,7 +17,7 @@ from services.tools.jobs import TERMINAL, JobStatus
 
 
 class JobStore(Protocol):
-    def create(self, job_id: str, tool: str, kind: str) -> None: ...
+    def create(self, job_id: str, tool: str, kind: str, org_id: str) -> None: ...
     def append_event(self, job_id: str, event: dict) -> None: ...
     def set_status(self, job_id: str, status: JobStatus) -> None: ...
     def set_result(self, job_id: str, result) -> None: ...
@@ -30,9 +30,9 @@ class InMemoryJobStore:
     def __init__(self) -> None:
         self._jobs: dict[str, dict] = {}
 
-    def create(self, job_id: str, tool: str, kind: str) -> None:
+    def create(self, job_id: str, tool: str, kind: str, org_id: str) -> None:
         self._jobs[job_id] = {
-            "job_id": job_id, "tool": tool, "kind": kind,
+            "job_id": job_id, "tool": tool, "kind": kind, "org_id": org_id,
             "status": JobStatus.QUEUED.value, "events": [], "result": None, "error": None,
         }
 
@@ -67,9 +67,9 @@ class RedisJobStore:
     def _k(self, job_id: str) -> str:
         return f"glowsky:job:{job_id}"
 
-    def create(self, job_id: str, tool: str, kind: str) -> None:
+    def create(self, job_id: str, tool: str, kind: str, org_id: str) -> None:
         self._r.hset(self._k(job_id), mapping={
-            "job_id": job_id, "tool": tool, "kind": kind,
+            "job_id": job_id, "tool": tool, "kind": kind, "org_id": org_id,
             "status": JobStatus.QUEUED.value, "result": "", "error": "",
         })
         self._r.expire(self._k(job_id), 86400)  # 24h TTL

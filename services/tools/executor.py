@@ -117,7 +117,7 @@ class ToolExecutionService:
 
         job_id = uuid.uuid4().hex
         store = get_store()
-        store.create(job_id, tool=name, kind="single")
+        store.create(job_id, tool=name, kind="single", org_id=ctx.org_id)
         store.append_event(job_id, event(EventType.QUEUED, tool=name))
         run_tool_job.delay(job_id, name, args, self._ctx_dict(ctx), seed)
         return job_id
@@ -132,7 +132,7 @@ class ToolExecutionService:
 
         job_id = uuid.uuid4().hex
         store = get_store()
-        store.create(job_id, tool=name, kind="batch")
+        store.create(job_id, tool=name, kind="batch", org_id=ctx.org_id)
         store.append_event(job_id, event(EventType.QUEUED, tool=name, total=len(items)))
         run_batch_job.delay(job_id, name, items, self._ctx_dict(ctx))
         return job_id

@@ -56,6 +56,34 @@ def test_dev_like_environments_tolerate_the_missing_key(env):
     validate_secret_config(Settings(environment=env, secret_key=None))  # must not raise
 
 
+def test_default_environment_is_production_and_refuses_dev_key(monkeypatch):
+    # GS-H1 fail-safe: a self-host that sets nothing (the shipped compose leaves both unset)
+    # must default to production and refuse to fall back to the public in-source dev key.
+    monkeypatch.delenv("GLOWSKY_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("GLOWSKY_SECRET_KEY", raising=False)
+    settings = Settings()
+    assert settings.environment == "production"
+    with pytest.raises(InsecureSecretKeyError):
+        validate_secret_config(settings)
+
+
+def test_credential_encrypt_refuses_dev_key_in_production(monkeypatch):
+    # Even if startup validation were skipped, the encryption path itself refuses to store a
+    # BYO-LLM credential under the derived public dev key in a production-grade environment.
+    from services.core import crypto
+
+    crypto._fernet.cache_clear()
+    monkeypatch.setattr(
+        crypto, "get_settings",
+        lambda: Settings(environment="production", secret_key=None),
+    )
+    try:
+        with pytest.raises(InsecureSecretKeyError):
+            crypto.encrypt("sk-should-never-be-persisted")
+    finally:
+        crypto._fernet.cache_clear()  # drop the poisoned entry so later tests use the test key
+
+
 # --- credentials API ----------------------------------------------------------
 
 

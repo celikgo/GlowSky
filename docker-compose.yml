@@ -8,6 +8,14 @@
 # host Docker socket so it can launch sandboxed CONTAINER tools (docker-out-of-docker).
 # NOTE: mounting docker.sock is root-equivalent on the host — fine for local dev; in
 # production use a rootless/sysbox/gVisor builder or a dedicated tool-runner service.
+#
+# MANDATORY secrets-at-rest config (GS-H1). Stored BYO-LLM credentials are Fernet-encrypted;
+# the key comes from GLOWSKY_SECRET_KEY. This compose deploys with GLOWSKY_ENVIRONMENT=production,
+# so the app REFUSES TO BOOT unless you supply a real GLOWSKY_SECRET_KEY (no silent fallback to
+# the public in-source dev key). Generate one and export it before `docker compose up`:
+#   export GLOWSKY_SECRET_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+# Keep this key stable and secret: rotating it makes every already-stored credential undecryptable.
+# For a throwaway local run only, set GLOWSKY_ENVIRONMENT=dev to opt in to the (insecure) dev key.
 services:
   redis:
     image: redis:7-alpine
@@ -20,6 +28,8 @@ services:
       dockerfile: infra/docker/api.Dockerfile
     command: uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
     environment:
+      GLOWSKY_ENVIRONMENT: production
+      GLOWSKY_SECRET_KEY: ${GLOWSKY_SECRET_KEY:?set GLOWSKY_SECRET_KEY to a Fernet key — see header}
       GLOWSKY_REDIS_URL: redis://redis:6379/0
       GLOWSKY_DATABASE_URL: sqlite:////data/glowsky.db
       GLOWSKY_TOOLS_DIR: /tools
@@ -37,6 +47,8 @@ services:
       dockerfile: infra/docker/api.Dockerfile
     command: celery -A services.tools.queue.celery_app worker --loglevel=info
     environment:
+      GLOWSKY_ENVIRONMENT: production
+      GLOWSKY_SECRET_KEY: ${GLOWSKY_SECRET_KEY:?set GLOWSKY_SECRET_KEY to a Fernet key — see header}
       GLOWSKY_REDIS_URL: redis://redis:6379/0
       GLOWSKY_DATABASE_URL: sqlite:////data/glowsky.db
       GLOWSKY_TOOLS_DIR: /tools

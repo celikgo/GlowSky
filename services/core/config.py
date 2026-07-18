@@ -104,7 +104,12 @@ class Settings(BaseSettings):
 
     # --- App ---
     app_name: str = "Glowsky"
-    environment: str = "dev"
+    # Fail-SAFE default: an unset environment is treated as production, so a self-host that
+    # follows the shipped compose without setting GLOWSKY_ENVIRONMENT/GLOWSKY_SECRET_KEY
+    # refuses to boot (validate_secret_config) rather than silently encrypting customers'
+    # BYO-LLM keys under the public in-source dev key (GS-H1). Local dev / CI must opt IN to
+    # the dev key by setting GLOWSKY_ENVIRONMENT to a dev-tier value (dev/test/ci/…).
+    environment: str = "production"
 
 
 @lru_cache

@@ -14,6 +14,13 @@ COPY pyproject.toml ./
 COPY apps ./apps
 COPY services ./services
 COPY scripts ./scripts
+# Alembic config + revision scripts. Required by the prod-compose `migrate` one-shot
+# (`alembic upgrade head`): without alembic.ini/migrations in the image, alembic exits
+# non-zero ("No 'script_location'"), the migrate service fails, and api/worker — which
+# hard-depend on migrate completing — never start. setuptools packages.find deliberately
+# excludes migrations/ from the wheel, so they must be copied as plain files here.
+COPY alembic.ini ./
+COPY migrations ./migrations
 
 RUN pip install --no-cache-dir -e .
 

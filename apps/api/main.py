@@ -931,7 +931,7 @@ def docking_sample(principal: Principal = Depends(current_principal)) -> dict:
 
 @app.post("/agent/design")
 async def design(
-    req: DesignRequest, principal: Principal = Depends(current_principal)
+    req: DesignRequest, principal: Principal = Depends(require_write)
 ) -> dict:
     # Scope the gateway to the caller's org so its stored BYO-LLM keys/routes apply
     # (falling back to env defaults, then the offline mock).
@@ -954,7 +954,7 @@ async def design(
 
 
 @app.post("/agent/chat")
-async def chat(req: ChatRequest, principal: Principal = Depends(current_principal)) -> dict:
+async def chat(req: ChatRequest, principal: Principal = Depends(require_write)) -> dict:
     """One Composer turn (non-streaming). Routes to the design loop or a conversational reply;
     a design turn's run is persisted (when requested) exactly like /agent/design."""
     if req.project_id is not None:
@@ -1045,6 +1045,17 @@ def _ws_principal(token: str | None) -> Principal:
     return principal
 
 
+def _ws_require_write(principal: Principal) -> None:
+    """WebSocket analogue of ``require_write``: reject a read-only (viewer) principal.
+
+    The agent streams execute tools through the orchestrator and persist AgentRun /
+    Molecule rows, so they are write paths and must match the REST gate (403 there,
+    a relayed error frame here). A ``ValueError`` surfaces as an ``error`` event.
+    """
+    if not principal.can_write:
+        raise ValueError("insufficient role (read-only)")
+
+
 @app.websocket("/agent/design/stream")
 async def stream_design(ws: WebSocket) -> None:
     """Run the agentic design loop, streaming each milestone live to the Composer.
@@ -1066,6 +1077,7 @@ async def stream_design(ws: WebSocket) -> None:
 
     try:
         principal = _ws_principal(init.get("token"))
+        _ws_require_write(principal)
         goal = (init.get("goal") or "").strip()
         seed = (init.get("seed_smiles") or "").strip()
         if not goal or not seed:
@@ -1117,6 +1129,7 @@ async def stream_chat(ws: WebSocket) -> None:
 
     try:
         principal = _ws_principal(init.get("token"))
+        _ws_require_write(principal)
         messages = init.get("messages") or []
         if not messages:
             raise ValueError("messages are required")

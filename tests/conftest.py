@@ -14,6 +14,13 @@ override is lifted and they must present a real minted JWT (e.g. via ``auth_head
 """
 from __future__ import annotations
 
+import os
+
+# The application now defaults GLOWSKY_ENVIRONMENT to "production" (fail-safe, GS-H1), which
+# would require a real GLOWSKY_SECRET_KEY. Opt the test session in to the dev-tier key BEFORE
+# any module imports and caches Settings (apps.api.main reads get_settings() at import time).
+os.environ.setdefault("GLOWSKY_ENVIRONMENT", "test")
+
 import time
 import uuid
 

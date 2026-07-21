@@ -56,6 +56,12 @@ def test_dev_like_environments_tolerate_the_missing_key(env):
     validate_secret_config(Settings(environment=env, secret_key=None))  # must not raise
 
 
+def test_container_tools_are_off_by_default():
+    # GS-M3: the root-equivalent docker-out-of-docker tool path is opt-in. A stock config
+    # (no GLOWSKY_ENABLE_CONTAINER_TOOLS) must leave it disabled.
+    assert Settings(_env_file=None).enable_container_tools is False
+
+
 def test_default_environment_is_production_and_refuses_dev_key(monkeypatch):
     # GS-H1 fail-safe: a self-host that sets nothing (the shipped compose leaves both unset)
     # must default to production and refuse to fall back to the public in-source dev key.

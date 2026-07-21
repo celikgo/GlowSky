@@ -12,6 +12,10 @@ dependencies = [
     "pydantic-settings>=2.1",
     "litellm>=1.40",
     "sqlalchemy>=2.0",
+    # Postgres DBAPI driver for production (postgresql+psycopg:// URLs). The [binary]
+    # wheel bundles libpq, so the slim image needs no apt libpq-dev. SQLite dev/test is
+    # unaffected — this driver is only imported when the URL selects Postgres.
+    "psycopg[binary]>=3.1",
     "rdkit>=2024.3",
     "celery>=5.3",
     "redis>=5",

@@ -131,17 +131,37 @@ Build with `make tools-thy`; they register exactly like a built-in tool.
 
 ### Run the whole stack on Docker
 
+Three compose profiles, each with a different security posture:
+
+| Profile | Command | Database | Docker socket | Container tools |
+|---|---|---|---|---|
+| **dev (default)** | `docker compose up --build` | SQLite | none (socket-free) | off |
+| **prod** | `docker compose -f docker-compose.prod.yml up --build` | **Postgres** (Alembic-migrated) | none (socket-free) | off |
+| **tools (opt-in)** | `docker compose -f docker-compose.yml -f docker-compose.tools.yml up --build` | SQLite | **mounted** (root-equivalent) | **on** |
+
 ```bash
-make tool-example         # build the example container tool image (on the host daemon)
-docker compose up --build # redis + api + worker (same image), API at :8000
+docker compose up --build   # redis + api + worker (same image), SQLite, API at :8000
 ```
 
-`docker compose` runs Redis + the API + a Celery worker. The worker mounts the host
-Docker socket so it can launch sandboxed **container tools** (docker-out-of-docker).
-Verified end-to-end: API → Redis → worker → `docker run` (sandboxed tool) → streamed
-result with image-pinned provenance.
-> The socket mount is root-equivalent on the host — fine for local dev; production
-> should use a rootless/sysbox/gVisor builder or a dedicated tool-runner service.
+The default and prod stacks are **socket-free** and register only the in-process built-in
+RDKit tools. `docker-compose.prod.yml` swaps SQLite for **Postgres** and runs a one-shot
+`alembic upgrade head` (the `migrate` service) that api/worker hard-depend on, so the schema
+is versioned rather than bootstrapped by `create_all`.
+
+**Container (docker-run) tools are OPT-IN** (`docker-compose.tools.yml`, GS-M3). That overlay
+mounts the host Docker socket so the worker can launch sandboxed tool containers
+(docker-out-of-docker) — verified end-to-end: API → Redis → worker → `docker run` → streamed
+result with image-pinned provenance:
+
+```bash
+make tool-example         # build the example container tool image (on the host daemon)
+docker compose -f docker-compose.yml -f docker-compose.tools.yml up --build
+```
+
+> The socket mount is **root-equivalent** on the host — acceptable only on a **trusted
+> single-tenant / local** host, which is why it is not in the default or prod stacks. A
+> hosted/multi-tenant deployment must use a rootless/sysbox/gVisor builder or a dedicated
+> tool-runner service before re-enabling container tools (deferred, ADR-005).
 
 ### Run with real docking (AutoDock Vina + OpenBabel)
 
@@ -175,7 +195,7 @@ curl -s localhost:8000/tools/dock -H 'content-type: application/json' -d '{"args
 | **Tool execution subsystem** | `services/tools/` | The scalable seam (docs/13): versioned `ToolSpec` contract, registry, `ToolExecutionService` (cache + firewall + provenance + compute-class routing) |
 | **Slow path + streaming** | `services/tools/queue/`, `store.py` | Celery tasks for heavy/batch tools; append-only `JobStore` (in-memory eager **or** Redis); `POST /jobs`, `/jobs/batch`, `GET /jobs/{id}`, and **`WS /jobs/{id}/stream`** relaying queued→running→item→completed live |
 | **Container-tool runtime** | `services/tools/runtimes/container.py`, `manifest.py`, `examples/tools/` | Bring-your-own model as a sandboxed Docker tool: JSON-stdin/stdout ABI, `glowsky-tool.yaml` manifests, strict isolation. Registered like any built-in (cache/firewall/provenance) |
-| **Docker deployment** | `docker-compose.yml`, `docker-compose.docking.yml`, `infra/docker/` | Redis + API + worker on one image; worker mounts the Docker socket to launch sandboxed tool containers. An opt-in `docking.Dockerfile` overlay adds a real AutoDock Vina + OpenBabel toolchain (`make up-docking`) |
+| **Docker deployment** | `docker-compose.yml` (dev), `docker-compose.prod.yml` (Postgres, migrated, socket-free), `docker-compose.tools.yml` (opt-in container tools), `docker-compose.docking.yml`, `infra/docker/` | Redis + API + worker on one image. Default + prod stacks are socket-free with container tools off; the opt-in tools overlay mounts the Docker socket (root-equivalent, trusted hosts only) to launch sandboxed tool containers. An opt-in `docking.Dockerfile` overlay adds a real AutoDock Vina + OpenBabel toolchain (`make up-docking`) |
 | **BYO-LLM gateway** | `services/llm_gateway/` | LiteLLM-backed multi-provider access + offline mock; task-class routing; keys resolved only at call time, never logged |
 | **Agent orchestrator** | `services/agent/orchestrator.py` | Plan (LLM) → generate → profile → filter → rank → synthesize (LLM); every chemistry call routes through the execution service, with a full provenance trace |
 | **API + persistence** | `apps/api/` + `services/core/` | FastAPI endpoints incl. generic `POST /tools/{name}`; runs + molecules stored with provenance (`origin_run_id`) in SQLite |
@@ -220,8 +240,11 @@ curl -s localhost:8000/projects/$PID/runs -H "authorization: Bearer $TOKEN"   # 
 
 **Database migrations (Alembic).** SQLite dev/test bootstraps tables via `create_all`,
 but **Alembic is the source of truth** for schema evolution — required for Postgres /
-production. The baseline migration is kept honest by a test that applies all migrations
-to a throwaway DB and diffs the result against the models.
+production. `docker-compose.prod.yml` runs `alembic upgrade head` as a one-shot `migrate`
+service (against Postgres, driver bundled via `psycopg[binary]`) that api/worker hard-depend
+on, so a prod boot is always schema-versioned. The baseline migration is kept honest by a
+test that applies all migrations to a throwaway DB and diffs the result against the models,
+plus a driver-free test that renders every migration as Postgres DDL.
 
 ```bash
 make migrate                      # alembic upgrade head (apply pending migrations)

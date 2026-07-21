@@ -6,6 +6,8 @@ matching migration — fix with `make migration m="..."`.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import pathlib
 import tempfile
 
@@ -61,3 +63,41 @@ def test_migrations_downgrade_to_base():
             command.downgrade(cfg, "base")  # raises if any downgrade step fails
         finally:
             object.__setattr__(settings, "database_url", original_url)
+
+
+def test_migrations_render_on_postgres():
+    """The migration scripts must render as valid Postgres DDL, not just SQLite.
+
+    Driver-free proof for the local gate (a live Postgres apply needs Docker, which the
+    unit gate excludes). We point the URL at a postgresql+psycopg:// DSN and run Alembic
+    in OFFLINE mode (`upgrade --sql`), which compiles the ops against the Postgres dialect
+    without ever opening a DBAPI connection. We then assert the emitted SQL is real Postgres
+    DDL and carries none of the SQLite batch-recreate artifacts — so the batch_alter_table
+    index ops in the scripts emit plain CREATE/DROP INDEX on Postgres rather than a
+    table rebuild. A full live apply is exercised by `docker compose -f
+    docker-compose.prod.yml up` (the `migrate` one-shot), outside this unit gate.
+    """
+    settings = get_settings()
+    original_url = settings.database_url
+    object.__setattr__(
+        settings, "database_url", "postgresql+psycopg://u:p@localhost:5432/db"
+    )
+    try:
+        cfg = Config(str(ROOT / "alembic.ini"))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            command.upgrade(cfg, "head", sql=True)  # offline: emit SQL, never connects
+        ddl = buf.getvalue()
+    finally:
+        object.__setattr__(settings, "database_url", original_url)
+
+    assert ddl.strip(), "offline upgrade emitted no SQL"
+    # Real Postgres DDL for tables from across all three migrations.
+    assert "CREATE TABLE organizations" in ddl  # baseline migration
+    assert "CREATE TABLE libraries" in ddl  # second migration
+    assert "CREATE TABLE llm_provider_credentials" in ddl  # third (routes/creds) migration
+    # timezone-aware DateTime maps to the Postgres type, not SQLite's untyped column.
+    assert "TIMESTAMP WITH TIME ZONE" in ddl
+    # No SQLite batch table-recreate leaked into the Postgres render.
+    assert "_alembic_tmp" not in ddl
+    assert "PRAGMA" not in ddl

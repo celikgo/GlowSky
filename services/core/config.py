@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     # Directory scanned for `glowsky-tool.yaml` manifests at startup. Each becomes a
     # sandboxed, agent-callable tool. Blank => no container tools loaded.
     tools_dir: str | None = None
+    # OFF by default (GS-M3). CONTAINER-runtime tools shell `docker run`, which in the
+    # compose stack requires a mounted /var/run/docker.sock — root-equivalent on the host.
+    # So container-tool registration is OPT-IN: even with tools_dir set, build_registry
+    # skips them unless this is true (see docker-compose.tools.yml, trusted single-tenant
+    # / local dev only). Built-in RDKit tools are always registered regardless.
+    enable_container_tools: bool = False
 
     # --- Chemistry prediction/engine backends (adapter-gated) ---
     # "none" (default) => the tool stays "not configured" and never fabricates values.

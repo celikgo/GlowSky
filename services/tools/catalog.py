@@ -236,6 +236,10 @@ def build_registry(settings=None) -> ToolRegistry:
 
     settings = settings or get_settings()
     reg = build_default_registry()
-    if settings.tools_dir:
+    # GS-M3: container (docker-run) tools are OPT-IN. They need a mounted docker.sock
+    # (root-equivalent) at runtime, so the default stack registers none of them even when
+    # a tools_dir is present — an operator must set GLOWSKY_ENABLE_CONTAINER_TOOLS=true
+    # (docker-compose.tools.yml, trusted single-tenant / local only). Built-ins are unaffected.
+    if settings.enable_container_tools and settings.tools_dir:
         load_container_tools(reg, settings.tools_dir)
     return reg

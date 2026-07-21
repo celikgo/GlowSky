@@ -1,0 +1,37 @@
+# ============================================================================
+#  OPT-IN overlay: CONTAINER (docker-run) tools. ROOT-EQUIVALENT — DO NOT use
+#  on an untrusted or multi-tenant host. TRUSTED single-tenant / local dev ONLY.
+# ============================================================================
+#
+#   docker compose -f docker-compose.yml -f docker-compose.tools.yml up --build
+#
+# Re-adds everything the default stack intentionally leaves out (GS-M3):
+#   * /var/run/docker.sock mounted into the worker (and api) so the CONTAINER runtime
+#     can shell `docker run` to launch sandboxed tool images (docker-out-of-docker),
+#   * GLOWSKY_TOOLS_DIR=/tools + the ./examples/tools manifest mount,
+#   * GLOWSKY_ENABLE_CONTAINER_TOOLS=true so build_registry actually registers them.
+#
+# WHY THIS IS SEPARATE: mounting docker.sock grants the container full control of the host
+# Docker daemon — effectively host root. That is acceptable for a single trusted operator's
+# local machine, and NOT acceptable for a hosted / multi-tenant offering. A production
+# multi-tenant deployment must instead use a rootless / sysbox / gVisor builder or a
+# dedicated, network-isolated tool-runner service (deferred, ADR-005). Until that lands the
+# prod stack (docker-compose.prod.yml) ships with container tools OFF.
+#
+# Build the example tool image(s) on the host daemon first, e.g. `make tool-example`.
+services:
+  api:
+    environment:
+      GLOWSKY_TOOLS_DIR: /tools
+      GLOWSKY_ENABLE_CONTAINER_TOOLS: "true"
+    volumes:
+      - ./examples/tools:/tools:ro                     # container-tool manifests (read-only)
+      - /var/run/docker.sock:/var/run/docker.sock      # ROOT-EQUIVALENT — trusted hosts only
+
+  worker:
+    environment:
+      GLOWSKY_TOOLS_DIR: /tools
+      GLOWSKY_ENABLE_CONTAINER_TOOLS: "true"
+    volumes:
+      - ./examples/tools:/tools:ro
+      - /var/run/docker.sock:/var/run/docker.sock      # launch sandboxed tool containers

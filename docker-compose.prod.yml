@@ -1,0 +1,95 @@
+# Glowsky production-shape stack — Postgres + Redis + API + worker, SOCKET-FREE.
+#
+#   export GLOWSKY_SECRET_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+#   export GLOWSKY_DB_PASSWORD="$(openssl rand -hex 24)"
+#   docker compose -f docker-compose.prod.yml up --build -d
+#   curl localhost:8000/health
+#
+# Differs from the dev docker-compose.yml in three ways:
+#   1. Postgres is the database (not SQLite). The `migrate` one-shot runs `alembic upgrade
+#      head` against it BEFORE api/worker start (they hard-depend on it completing), so the
+#      schema is versioned by Alembic — not created ad hoc by create_all.
+#   2. It is SOCKET-FREE and does NOT register CONTAINER (docker-run) tools. Re-enabling them
+#      needs a rootless/sysbox/gVisor builder or a dedicated tool-runner service (deferred,
+#      ADR-005); do NOT bolt docker-compose.tools.yml onto a multi-tenant/hosted deployment.
+#   3. Redis is internal-only (no published host port); only the API is published (:8000).
+#
+# REQUIRED env (the ${...:?} guards refuse to start if unset — no insecure defaults):
+#   GLOWSKY_SECRET_KEY   — Fernet key for BYO-LLM secrets at rest (GS-H1). Keep stable & secret.
+#   GLOWSKY_DB_PASSWORD  — Postgres password for the glowsky role.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: glowsky
+      POSTGRES_DB: glowsky
+      POSTGRES_PASSWORD: ${GLOWSKY_DB_PASSWORD:?set GLOWSKY_DB_PASSWORD to the Postgres password}
+    volumes:
+      - glowsky-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glowsky -d glowsky"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Internal only — no published port.
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    command: alembic upgrade head
+    environment:
+      GLOWSKY_ENVIRONMENT: production
+      GLOWSKY_DATABASE_URL: postgresql+psycopg://glowsky:${GLOWSKY_DB_PASSWORD:?set GLOWSKY_DB_PASSWORD to the Postgres password}@postgres:5432/glowsky
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    command: uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      GLOWSKY_ENVIRONMENT: production
+      GLOWSKY_SECRET_KEY: ${GLOWSKY_SECRET_KEY:?set GLOWSKY_SECRET_KEY to a Fernet key — see header}
+      GLOWSKY_DATABASE_URL: postgresql+psycopg://glowsky:${GLOWSKY_DB_PASSWORD:?set GLOWSKY_DB_PASSWORD to the Postgres password}@postgres:5432/glowsky
+      GLOWSKY_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    command: celery -A services.tools.queue.celery_app worker --loglevel=info
+    environment:
+      GLOWSKY_ENVIRONMENT: production
+      GLOWSKY_SECRET_KEY: ${GLOWSKY_SECRET_KEY:?set GLOWSKY_SECRET_KEY to a Fernet key — see header}
+      GLOWSKY_DATABASE_URL: postgresql+psycopg://glowsky:${GLOWSKY_DB_PASSWORD:?set GLOWSKY_DB_PASSWORD to the Postgres password}@postgres:5432/glowsky
+      GLOWSKY_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  glowsky-pgdata:

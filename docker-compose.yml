@@ -1,13 +1,15 @@
-# Glowsky local deployment — full stack on Docker.
+# Glowsky local deployment — DEFAULT dev stack (SQLite, socket-free, container tools OFF).
 #
-#   make tool-example        # build the example container tool image (on the host daemon)
-#   docker compose up --build # redis + api + worker
+#   docker compose up --build   # redis + api + worker
 #   curl localhost:8000/health
 #
-# The API and worker run the SAME image (different commands). The worker mounts the
-# host Docker socket so it can launch sandboxed CONTAINER tools (docker-out-of-docker).
-# NOTE: mounting docker.sock is root-equivalent on the host — fine for local dev; in
-# production use a rootless/sysbox/gVisor builder or a dedicated tool-runner service.
+# The API and worker run the SAME image (different commands). This default stack is
+# SOCKET-FREE and does NOT register CONTAINER (docker-run) tools: built-in RDKit chemistry
+# runs in-process and needs no Docker socket. The root-equivalent docker.sock mount +
+# container-tool wiring live in the OPT-IN overlay docker-compose.tools.yml (GS-M3):
+#   docker compose -f docker-compose.yml -f docker-compose.tools.yml up --build
+# Use that overlay only on a TRUSTED single-tenant / local host. For a production-shaped
+# stack (Postgres + migrations, socket-free) see docker-compose.prod.yml.
 #
 # MANDATORY secrets-at-rest config (GS-H1). Stored BYO-LLM credentials are Fernet-encrypted;
 # the key comes from GLOWSKY_SECRET_KEY. This compose deploys with GLOWSKY_ENVIRONMENT=production,
@@ -32,9 +34,7 @@ services:
       GLOWSKY_SECRET_KEY: ${GLOWSKY_SECRET_KEY:?set GLOWSKY_SECRET_KEY to a Fernet key — see header}
       GLOWSKY_REDIS_URL: redis://redis:6379/0
       GLOWSKY_DATABASE_URL: sqlite:////data/glowsky.db
-      GLOWSKY_TOOLS_DIR: /tools
     volumes:
-      - ./examples/tools:/tools:ro     # container-tool manifests (read-only)
       - glowsky-data:/data             # persistent SQLite
     ports:
       - "8000:8000"
@@ -51,11 +51,8 @@ services:
       GLOWSKY_SECRET_KEY: ${GLOWSKY_SECRET_KEY:?set GLOWSKY_SECRET_KEY to a Fernet key — see header}
       GLOWSKY_REDIS_URL: redis://redis:6379/0
       GLOWSKY_DATABASE_URL: sqlite:////data/glowsky.db
-      GLOWSKY_TOOLS_DIR: /tools
     volumes:
-      - ./examples/tools:/tools:ro
       - glowsky-data:/data
-      - /var/run/docker.sock:/var/run/docker.sock   # launch sandboxed tool containers
     depends_on:
       - redis
 

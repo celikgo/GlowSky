@@ -15,9 +15,19 @@ from services.core.config import get_settings
 from services.core.models import Base
 
 _settings = get_settings()
-_connect_args = {"check_same_thread": False} if _settings.database_url.startswith("sqlite") else {}
+_is_sqlite = _settings.database_url.startswith("sqlite")
+_connect_args = {"check_same_thread": False} if _is_sqlite else {}
 
-engine = create_engine(_settings.database_url, connect_args=_connect_args, future=True)
+# SQLite (dev/test) keeps its zero-config engine. For a real DBAPI (Postgres) tune a
+# QueuePool: pre-ping drops connections severed by the server/proxy before they're
+# handed to a request, and a bounded pool + overflow caps concurrent backend sessions.
+_pool_kwargs: dict = (
+    {} if _is_sqlite else {"pool_pre_ping": True, "pool_size": 5, "max_overflow": 10}
+)
+
+engine = create_engine(
+    _settings.database_url, connect_args=_connect_args, future=True, **_pool_kwargs
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
 

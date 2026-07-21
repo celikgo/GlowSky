@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from services.core.config import Settings
+from services.tools.catalog import build_registry
 from services.tools.context import ExecutionContext
 from services.tools.executor import ToolExecutionService
 from services.tools.manifest import (
@@ -57,6 +59,31 @@ def test_network_fails_closed_for_non_none_egress():
     for egress in (Egress.NONE, Egress.ALLOWLIST):
         argv = rt.build_command("img:1", res, egress, "65534:65534")
         assert "--network" in argv and argv[argv.index("--network") + 1] == "none", egress
+
+
+def test_build_registry_gates_container_tools():
+    """GS-M3: CONTAINER (docker-run) tools are OFF unless explicitly opted in.
+
+    Registering a container tool means wiring the docker-out-of-docker path, which in the
+    compose stack needs a root-equivalent /var/run/docker.sock mount. So even with a
+    populated tools_dir, build_registry must register ZERO Runtime.CONTAINER tools until
+    enable_container_tools is set — the socket-dependent path is never reached by default.
+    Built-in RDKit tools are registered either way.
+    """
+    off = Settings(
+        environment="test", tools_dir=str(EXAMPLE_DIR), enable_container_tools=False
+    )
+    reg_off = build_registry(off)
+    assert [s for s in reg_off.list() if s.runtime == Runtime.CONTAINER] == []
+    assert any(s.name == "validate_molecule" for s in reg_off.list())  # built-ins present
+
+    on = Settings(
+        environment="test", tools_dir=str(EXAMPLE_DIR), enable_container_tools=True
+    )
+    reg_on = build_registry(on)
+    container = [s for s in reg_on.list() if s.runtime == Runtime.CONTAINER]
+    assert container, "opting in should register the example container tools"
+    assert any(s.name == "validate_molecule" for s in reg_on.list())  # built-ins still present
 
 
 def test_run_passes_args_on_stdin_and_returns_result():

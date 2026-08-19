@@ -1,10 +1,11 @@
-"""The version appears in four places; they must agree.
+"""The version appears in five places; they must agree.
 
 A release tag that disagrees with the version inside the artifacts it ships is a
 release nobody can reason about afterwards: a bug report saying "0.1.0" stops
 identifying a build. There is no single source of truth available here — the Python
-package, the desktop package and the Tauri bundle each need the version in their own
-format — so the next best thing is a test that they never drift apart.
+package, the desktop package, the Tauri bundle and the release compose file each need
+the version in their own format — so the next best thing is a test that they never
+drift apart.
 """
 from __future__ import annotations
 
@@ -35,12 +36,30 @@ def _cargo_version() -> str:
     return tomllib.loads(text)["package"]["version"]
 
 
+def _release_compose_version() -> str:
+    """The image tag docker-compose.release.yml defaults to.
+
+    Read with a regex rather than a YAML parser: the value is inside a
+    `${GLOWSKY_VERSION:-0.1.0}` interpolation, which is a compose construct rather than
+    a YAML one, so the tag is part of an opaque string either way.
+    """
+    text = (ROOT / "docker-compose.release.yml").read_text()
+    tags = set(re.findall(r"ghcr\.io/celikgo/glowsky:\$\{GLOWSKY_VERSION:-([^}]+)\}", text))
+    assert tags, "docker-compose.release.yml declares no default image tag"
+    assert len(tags) == 1, (
+        f"docker-compose.release.yml pins more than one default version: {sorted(tags)}. "
+        f"The api, worker and migrate services must run the same image."
+    )
+    return tags.pop()
+
+
 def test_all_version_declarations_agree():
     versions = {
         "pyproject.toml": _pyproject_version(),
         "apps/desktop/package.json": _desktop_package_version(),
         "apps/desktop/src-tauri/tauri.conf.json": _tauri_version(),
         "apps/desktop/src-tauri/Cargo.toml": _cargo_version(),
+        "docker-compose.release.yml": _release_compose_version(),
     }
     distinct = set(versions.values())
     assert len(distinct) == 1, (

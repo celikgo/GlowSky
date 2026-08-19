@@ -65,6 +65,15 @@ with results published to a generated `docs/VALIDATION.md`:
 behind it, and what validating each would require. Six of the backend's seven ADMET
 endpoints are on that list; only solubility has a benchmark behind it.
 
+**Running a tagged release rather than the working tree.**
+`docker-compose.release.yml` runs the published GHCR image; every other compose stack
+builds from whatever is checked out, which is a moving target and not something a bug
+report can identify. It carries no `build:` section anywhere, and the docker workflow
+fails the build if one appears or if the three application services ever pin different
+tags — a partial bump would otherwise run an API and a worker from different releases
+against one database. Its default tag is a fifth version declaration, kept in step with
+the other four by `tests/test_version_consistency.py`.
+
 **Project hygiene.** `SECURITY.md` (with the known limitations documented as known),
 `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, this changelog, and a version-consistency test
 covering the four places the version is declared.

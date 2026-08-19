@@ -8,14 +8,14 @@
 
 **The AI-native workspace for small-molecule drug design — "Cursor for Chemists."**
 
-Glowsky is an AI-first environment where medicinal chemists and computational drug-discovery researchers design, optimize, analyze, and manage small molecules through natural language and intelligent agents — combining IDE-grade ergonomics, deep chemistry tooling (RDKit, docking, ADMET, retrosynthesis, literature RAG), and **Bring-Your-Own-LLM** support, available as SaaS and self-hosted.
+Glowsky is an AI-first environment where medicinal chemists and computational drug-discovery researchers design, optimize, analyze, and manage small molecules through natural language and intelligent agents — combining IDE-grade ergonomics, deep chemistry tooling (RDKit descriptors and structural alerts, MPO scoring, matched molecular pairs/SAR, template retrosynthesis, plus opt-in ADMET and AutoDock Vina docking), and **Bring-Your-Own-LLM** support. Self-hostable today; literature RAG and a managed SaaS are planned (`docs/09-roadmap.md`).
 
-> **Status:** Early access — self-hostable today; a managed/hosted SaaS is not GA yet. A working vertical slice runs end to end: the FastAPI backend (BYO-LLM gateway + validated chemistry tools + the agentic design loop) under `services/` and `apps/api/`, plus a Tauri desktop app (`apps/desktop/`) with design, retrosynthesis, SAR/matched-pairs, docking and library screens and a molecule inspector. Product & architecture docs live in `docs/`. See **Getting Started** below.
+> **Status:** Early access — self-hostable today; a managed/hosted SaaS is not GA yet. A working vertical slice runs end to end: the FastAPI backend (BYO-LLM gateway + validated chemistry tools + the agentic design loop) under `services/` and `apps/api/`, plus a Tauri desktop app (`apps/desktop/`) whose default screen is the **Composer** — a multi-turn chat front door over the design loop — alongside design, retrosynthesis, SAR/matched-pairs, docking, library, tools and settings screens, a ⌘K command palette and a molecule inspector. Product & architecture docs live in `docs/`. See **Getting Started** below.
 
 ---
 
 ## The core idea
-Express your design *intent* in natural language; a chemistry-aware agent **plans** and orchestrates **validated tools** to execute it. LLMs reason and explain; deterministic chemistry (RDKit, predictors, docking) computes. The molecule is a first-class, versioned, visualizable object — never a hallucinated string. Use your own LLM keys (Claude, GPT, Grok, Groq, local models…), routed per task.
+Express your design *intent* in natural language; a chemistry-aware agent **plans** and orchestrates **validated tools** to execute it. LLMs reason and explain; deterministic chemistry (RDKit, predictors, docking) computes. The molecule is a first-class, visualizable, provenance-carrying object — never a hallucinated string (molecule *versioning* is still planned, `docs/03-feature-spec.md` B5). Use your own LLM keys (Anthropic Claude, OpenAI, Groq, or any OpenAI-compatible local endpoint such as Ollama/vLLM), routed per task class (reasoning / fast triage / codegen).
 
 ---
 
@@ -45,17 +45,29 @@ The runnable slice proves the two hardest integrations end-to-end: the **BYO-LLM
 **deterministic chemistry-as-tools**, wired through an **agentic design loop**. It runs
 **fully offline** (a built-in mock LLM) so no API key is needed to try it.
 
-> Requires Python 3.11–3.13 (RDKit has no 3.14 wheels yet). Homebrew `python3.13` works.
+> Requires Python 3.11–3.13 (RDKit has no 3.14 wheels yet). `make venv` hardcodes the
+> Apple-Silicon Homebrew interpreter (`/opt/homebrew/bin/python3.13`, Makefile:9) and —
+> unlike `PY`/`PIP`/`ALEMBIC` — is not overridable; on Intel macOS, Linux, or Windows create
+> the env yourself: `python3 -m venv .venv313 && make install` (the Makefile's `PY`/`PIP`
+> default to `.venv313/bin/`, so the directory name matters, the interpreter name does not).
+> Day-to-day development and both app images (`infra/docker/api.Dockerfile`,
+> `infra/docker/docking.Dockerfile`) run 3.13; there is no CI, so 3.11/3.12 are supported by
+> declaration (`requires-python = ">=3.11,<3.14"`) but never exercised.
 
 ```bash
 make venv && make install     # create .venv313 + install (editable)
-make test                     # 91 tests: firewall, tools, slow-path + streaming, container runtime, gateway, agent loop, API, auth/tenancy, migrations, ADMET/docking backends, library I/O, run export, BYO-LLM key management
+make test                     # 209 tests: firewall, chemistry core (MMP/SAR, retrosynthesis, bioisosteres, med-chem rules + MPO), tools, slow-path + streaming, container runtime + THY logistics tools, gateway, agent + Composer chat loop, API, auth/tenancy + RBAC, migrations, ADMET/docking backends, library I/O, run export, BYO-LLM key management
 make demo                     # run a sample design loop, print results + provenance
 make run                      # start the API at http://localhost:8000  (/docs for Swagger)
 ```
 
-**Try the design loop** (offline mock LLM by default). Every API call needs a
-nakitte-carbon-auth JWT (see **Auth & multi-tenancy** below); export one as `$TOKEN` first:
+> The desktop app has its own suite: `cd apps/desktop && pnpm test` (13 vitest tests across
+> 5 files). It is not run by `make test` — pytest's `testpaths` is `["tests"]`, and no
+> Makefile target invokes it.
+
+**Try the design loop** (offline mock LLM by default). This call — like every endpoint that
+touches data or spends compute — needs a nakitte-carbon-auth JWT (see **Auth &
+multi-tenancy** below); export one as `$TOKEN` first:
 
 ```bash
 curl -s localhost:8000/agent/design \
@@ -71,17 +83,29 @@ curl -s localhost:8000/agent/design \
 `GLOWSKY_ANTHROPIC_API_KEY`) and route (e.g. `GLOWSKY_ROUTE_REASONING=anthropic/claude-opus-4-8`).
 With no keys set, every task class gracefully falls back to the offline mock.
 
-**Slow path & streaming.** Heavy tools (conformers, docking, batch library jobs) run
-off the request thread and stream progress. Submit a job, then stream its events:
+**Slow path & streaming.** Heavy tools (conformers, docking, batch library jobs) are taken
+off the request by **submitting them as jobs** — `POST /jobs` / `POST /jobs/batch` — which
+stream progress. (`POST /tools/{name}` always runs the handler inline and holds the HTTP
+response until it finishes, whatever the spec's compute/latency class; automatic
+compute-class routing is not wired yet. With `GLOWSKY_REDIS_URL` unset, Celery is eager, so
+jobs also run in-process — see below.)
+
+> `$TOKEN` is the JWT exported above. `POST /tools/{name}`, `POST /jobs` and
+> `POST /jobs/batch` require a **writer** principal (`require_write`); `GET /jobs/{id}`
+> requires any authenticated principal (`current_principal`). `GET /health` is the only
+> endpoint below that needs no token.
+
+Submit a job, then stream its events:
 
 ```bash
 # Batch-profile a library; per-item results stream as they complete
-JOB=$(curl -s localhost:8000/jobs/batch -H 'content-type: application/json' -d '{
+JOB=$(curl -s localhost:8000/jobs/batch -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{
   "tool": "profile_molecule",
   "items": [{"canonical_smiles":"CCO"},{"canonical_smiles":"c1ccccc1C(=O)O"}]
 }' | python -c 'import sys,json;print(json.load(sys.stdin)["job_id"])')
-# Stream events over WebSocket:  ws://localhost:8000/jobs/$JOB/stream
-curl -s localhost:8000/jobs/$JOB | python -m json.tool   # or poll
+# Stream events over WebSocket:  ws://localhost:8000/jobs/$JOB/stream?token=$TOKEN
+curl -s localhost:8000/jobs/$JOB -H "authorization: Bearer $TOKEN" | python -m json.tool   # or poll
 ```
 
 With **no `GLOWSKY_REDIS_URL`**, Celery runs *eager* (in-process) — the slow path works
@@ -90,18 +114,24 @@ Redis (`make redis`) and a worker (`make worker`), or `docker compose up`. Same 
 same events; jobs now execute on workers and stream over Redis.
 
 **Container tools (bring-your-own model).** A researcher packages their tool as a Docker
-image that speaks the tool ABI (read JSON args on stdin, write `{"ok",result}` on stdout)
-and drops a `glowsky-tool.yaml` under `GLOWSKY_TOOLS_DIR`. Glowsky registers it as a
+image that speaks the tool ABI (read JSON args on stdin, write `{"ok": true, "result": {…}}`
+on stdout) and drops a `glowsky-tool.yaml` under `GLOWSKY_TOOLS_DIR`. Glowsky registers it as a
 first-class, agent-callable tool — with the **same cache, firewall, and provenance** as
 built-ins — and runs it **fully sandboxed**: `--network none --read-only --cap-drop ALL
 --security-opt no-new-privileges`, non-root, memory/cpu/pids caps, and a hard timeout.
 
 ```bash
 make tool-example        # build examples/tools/molecular_formula -> a container tool
-GLOWSKY_TOOLS_DIR=examples/tools make run     # API now lists `molecular_formula`
+GLOWSKY_TOOLS_DIR=examples/tools GLOWSKY_ENABLE_CONTAINER_TOOLS=true make run   # API now lists `molecular_formula`
 curl -s localhost:8000/tools/molecular_formula -d '{"args":{"canonical_smiles":"CCO"}}' \
+  -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json'         # runs the sandboxed container, returns formula
 ```
+
+Container tools are opt-in: registration needs **both** `GLOWSKY_TOOLS_DIR` and
+`GLOWSKY_ENABLE_CONTAINER_TOOLS=true` (GS-M3, `services/tools/catalog.py`). With only
+`GLOWSKY_TOOLS_DIR` set the registry stays at the 22 built-ins and
+`POST /tools/molecular_formula` returns 404.
 
 **Real ADMET backend (`examples/tools/admet_ai/`).** A production-grade example: the open
 **ADMET-AI** predictor (pretrained Chemprop-RDKit GNN over ~40 Therapeutics Data Commons
@@ -111,8 +141,8 @@ under `--network none`.
 
 ```bash
 make tool-admet          # build glowsky-tool-admet-ai (large: torch; takes a few min)
-GLOWSKY_TOOLS_DIR=examples/tools make run
-curl -s localhost:8000/tools/admet_ai -H 'content-type: application/json' \
+GLOWSKY_TOOLS_DIR=examples/tools GLOWSKY_ENABLE_CONTAINER_TOOLS=true make run
+curl -s localhost:8000/tools/admet_ai -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"args":{"canonical_smiles":"CC(=O)Oc1ccccc1C(=O)O","endpoints":["Solubility","hERG","BBB"]}}'
 # -> real ADMET predictions, sandboxed, with image-pinned provenance
 ```
@@ -131,22 +161,28 @@ Build with `make tools-thy`; they register exactly like a built-in tool.
 
 ### Run the whole stack on Docker
 
-Three compose profiles, each with a different security posture:
+Four compose files, selected with `-f` — a base dev stack, a standalone prod stack, and two
+opt-in overlays. (These are plain files, not Compose `profiles:`; `docker compose --profile …`
+does not apply here.) Each has a different security posture:
 
-| Profile | Command | Database | Docker socket | Container tools |
+| Stack | Command | Database | Docker socket | Container tools |
 |---|---|---|---|---|
 | **dev (default)** | `docker compose up --build` | SQLite | none (socket-free) | off |
 | **prod** | `docker compose -f docker-compose.prod.yml up --build` | **Postgres** (Alembic-migrated) | none (socket-free) | off |
-| **tools (opt-in)** | `docker compose -f docker-compose.yml -f docker-compose.tools.yml up --build` | SQLite | **mounted** (root-equivalent) | **on** |
+| **tools (opt-in overlay)** | `docker compose -f docker-compose.yml -f docker-compose.tools.yml up --build` | SQLite | **mounted** (root-equivalent) | **on** |
+| **docking (opt-in overlay)** | `make up-docking` (= `docker compose -f docker-compose.yml -f docker-compose.docking.yml up --build`) | SQLite | none (socket-free) | off |
 
 ```bash
 docker compose up --build   # redis + api + worker (same image), SQLite, API at :8000
 ```
 
 The default and prod stacks are **socket-free** and register only the in-process built-in
-RDKit tools. `docker-compose.prod.yml` swaps SQLite for **Postgres** and runs a one-shot
-`alembic upgrade head` (the `migrate` service) that api/worker hard-depend on, so the schema
-is versioned rather than bootstrapped by `create_all`.
+RDKit tools. `docker-compose.prod.yml` is a complete standalone stack (not an overlay): it
+swaps SQLite for **Postgres** and runs a one-shot `alembic upgrade head` (the `migrate`
+service) that api/worker hard-depend on, so the schema is versioned rather than bootstrapped
+by `create_all`. The docking overlay changes only the chemistry backend — it rebuilds api +
+worker from `infra/docker/docking.Dockerfile` (AutoDock Vina 1.2.5 + OpenBabel, pinned
+`linux/amd64`) and sets `GLOWSKY_DOCKING_BACKEND=vina`.
 
 **Container (docker-run) tools are OPT-IN** (`docker-compose.tools.yml`, GS-M3). That overlay
 mounts the host Docker socket so the worker can launch sandboxed tool containers
@@ -181,43 +217,56 @@ crystal ligand, `13.1, 22.5, 5.6`):
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.docking.yml run --rm api \
   obabel /receptors/1hsg_receptor.pdb -O /receptors/1hsg_receptor.pdbqt -xr
-curl -s localhost:8000/tools/dock -H 'content-type: application/json' -d '{"args":{
+curl -s localhost:8000/tools/dock -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{"args":{
   "ligand_smiles":"CC(C)(C)NC(=O)C1CC2CCCCC2CN1Cc1cccnc1",
   "receptor_ref":"/receptors/1hsg_receptor.pdbqt",
   "center":[13.1,22.5,5.6],"size":[22,22,22]}}'   # -> real affinities + per-pose .pdbqt geometry
 ```
 
-### What's implemented in Phase 0
+### What's implemented today
+
+Untagged rows are the Phase 0 foundation; rows tagged *(Phase 1)* landed since.
+
 | Area | Module | Notes |
 |---|---|---|
 | **Deterministic firewall** | `services/chemistry/validation.py` | Every structure (incl. LLM-emitted) is validated/canonicalized before it's trusted or stored |
-| **Chemistry tools (15)** | `services/chemistry/*` | Validation, descriptors, druglikeness, PAINS/BRENK, fingerprints, Tanimoto (single+bulk), substructure search, Murcko scaffolds, SA score, analog enumeration, ETKDG conformers; ADMET + docking as adapter-gated seams |
-| **Tool execution subsystem** | `services/tools/` | The scalable seam (docs/13): versioned `ToolSpec` contract, registry, `ToolExecutionService` (cache + firewall + provenance + compute-class routing) |
+| **Chemistry tools (22)** | `services/chemistry/*` | Validation, descriptors + one-call profiling, druglikeness, PAINS/BRENK alerts, fingerprints, Tanimoto (single+bulk), substructure search, Murcko scaffolds, SA score, template retrosynthesis + synthesizability, MPO scoring + a 7-rule med-chem battery (Lipinski/Veber/Ghose/Egan/Muegge/lead-like/Ro3), matched molecular pairs + SAR transforms, analog enumeration, bioisosteric replacement, ETKDG conformers; ADMET + docking as adapter-gated seams |
+| **Tool execution subsystem** | `services/tools/` | The scalable seam (docs/13): versioned `ToolSpec` contract, registry, `ToolExecutionService` (cache + firewall + provenance; compute/latency class declared on every spec and recorded in provenance, with the slow path entered by explicit job submission — automatic compute-class routing is not wired yet) |
 | **Slow path + streaming** | `services/tools/queue/`, `store.py` | Celery tasks for heavy/batch tools; append-only `JobStore` (in-memory eager **or** Redis); `POST /jobs`, `/jobs/batch`, `GET /jobs/{id}`, and **`WS /jobs/{id}/stream`** relaying queued→running→item→completed live |
 | **Container-tool runtime** | `services/tools/runtimes/container.py`, `manifest.py`, `examples/tools/` | Bring-your-own model as a sandboxed Docker tool: JSON-stdin/stdout ABI, `glowsky-tool.yaml` manifests, strict isolation. Registered like any built-in (cache/firewall/provenance) |
 | **Docker deployment** | `docker-compose.yml` (dev), `docker-compose.prod.yml` (Postgres, migrated, socket-free), `docker-compose.tools.yml` (opt-in container tools), `docker-compose.docking.yml`, `infra/docker/` | Redis + API + worker on one image. Default + prod stacks are socket-free with container tools off; the opt-in tools overlay mounts the Docker socket (root-equivalent, trusted hosts only) to launch sandboxed tool containers. An opt-in `docking.Dockerfile` overlay adds a real AutoDock Vina + OpenBabel toolchain (`make up-docking`) |
 | **BYO-LLM gateway** | `services/llm_gateway/` | LiteLLM-backed multi-provider access + offline mock; task-class routing; keys resolved only at call time, never logged |
 | **Agent orchestrator** | `services/agent/orchestrator.py` | Plan (LLM) → generate → profile → filter → rank → synthesize (LLM); every chemistry call routes through the execution service, with a full provenance trace |
-| **API + persistence** | `apps/api/` + `services/core/` | FastAPI endpoints incl. generic `POST /tools/{name}`; runs + molecules stored with provenance (`origin_run_id`) in SQLite |
-| **Auth & tenancy** *(Phase 1)* | `services/core/nakitte_auth.py`, `apps/api/deps.py` | **nakitte-carbon-auth JWT** is the sole credential (RS256, JWKS-verified) — no local key store, no bypass; org/user/membership tenant is JIT-provisioned from the token; tenant-scoped projects/runs/molecules + audit trail; every tool/job/molecule/design endpoint covered |
+| **API + persistence** | `apps/api/` + `services/core/` | FastAPI endpoints incl. generic `POST /tools/{name}` and **`POST /agent/chat`** + **`WS /agent/chat/stream`** (one Composer turn, non-streaming/streaming; `services/agent/chat.py`, write-scoped like `/agent/design`); runs + molecules stored with provenance (`origin_run_id`) in SQLite (dev/test default) or **Postgres** (prod, Alembic-migrated — see `docker-compose.prod.yml`) |
+| **Auth & tenancy** *(Phase 1)* | `services/core/nakitte_auth.py`, `apps/api/deps.py` | **nakitte-carbon-auth JWT** is the sole credential (RS256, JWKS-verified) — no local key store, no bypass; org/user/membership tenant is JIT-provisioned from the token; tenant-scoped projects/runs/molecules + audit trail; every design, job and tool-execution endpoint gated (`require_write` for writes, `current_principal` for reads, a `token` query/init frame for the three WebSockets). Ungated by design: `GET /health`, the pre-tenant `/auth/*` proxies, `GET /settings/providers`, and `GET /tools` (static catalog, no execution). Known gap: `POST /molecules/diff` is stateless compute but is currently ungated, unlike its `/molecules/*` siblings |
 | **Real ADMET/docking backends** *(Phase 1)* | `services/chemistry/adapters/admet_rdkit.py`, `adapters/vina.py` | Offline **RDKit-QSPR** ADMET (ESOL solubility + BBB rule + lipophilicity heuristics, every value carries method/confidence/applicability-domain) and an **AutoDock Vina** docking wrapper that surfaces real per-pose 3D geometry (parsed from Vina's output `.pdbqt`, not just scores) — both adapter-gated (`GLOWSKY_ADMET_BACKEND`, `GLOWSKY_DOCKING_BACKEND`); the default stays "not configured" so nothing is ever fabricated |
-| **Library + SMILES/CSV/SDF I/O** *(Phase 1)* | `services/chemistry/io.py`, `apps/api/main.py` | Tenant-scoped libraries; import/export in SMILES/CSV/SDF (every structure firewalled, InChIKey-deduped with fill-only property merge on re-import (fills empty fields, never overwrites), bad rows reported not fatal); molecule diff with per-descriptor deltas |
+| **Library + SMILES/CSV/SDF I/O** *(Phase 1)* | `services/chemistry/io.py`, `apps/api/main.py` | Tenant-scoped libraries; import/export in SMILES/CSV/SDF (every structure firewalled, InChIKey-deduped, with a re-import filling empty property fields but never overwriting one, and bad rows reported rather than fatal); molecule diff with per-descriptor deltas |
 | **Migrations** *(Phase 1)* | `migrations/`, `tests/test_migrations.py` | Alembic as schema source of truth; a drift-guard test fails if models and migrations diverge |
 | **Run export** *(Phase 1)* | `services/reporting/`, `GET /runs/{id}/export` | Export a design run as a **reproducible Jupyter notebook** (self-contained RDKit code that recomputes descriptors + re-applies the filters — verified to execute) or a **Markdown report**; both built from stored provenance, tenant-scoped |
 | **BYO-LLM key management** *(Phase 1)* | `services/core/crypto.py`, `services/llm_gateway/credentials.py`, `apps/api/main.py` | Per-org provider credentials **encrypted at rest** (Fernet; only a masked hint is ever returned) and per-org model-route overrides; the gateway resolves an org's stored keys/routes ahead of env defaults (then the offline mock). Endpoints under `/settings/*`, tenant-scoped |
-| **Desktop app** *(Phase 1)* | `apps/desktop/` | **Tauri 2 + React + Vite + TS** desktop client themed in the Twitter **Dim** palette. Design (agentic loop with **RDKit-JS 2D rendering** + an interactive **3Dmol.js conformer viewer** behind a per-card 2D/3D toggle, notebook/report export), Library (projects + SMILES/CSV/SDF I/O), Docking (adapter-gated dock form + a **3Dmol.js receptor/ligand pose viewer**, demoable on a real RCSB 1HSG sample complex), Tools (schema-driven registry playground), and Settings (BYO-LLM keys + model routing). See `apps/desktop/README.md` |
+| **Desktop app** *(Phase 1)* | `apps/desktop/` | **Tauri 2 + React + Vite + TS** desktop client themed in the Twitter **Dim** palette. **Composer** (the default screen: multi-turn chat over `WS /agent/chat/stream`, a working seed that carries across turns, `@`-attached context molecules, **Ketcher** 2D structure drawing (`ketcher-react` 3.15.0, lazy-loaded), multi-select candidates → save-to-library, and per-run notebook/report export), Design (agentic loop with **RDKit-JS 2D rendering** + an interactive **3Dmol.js conformer viewer** behind a per-card 2D/3D toggle, notebook/report export), Library (projects + SMILES/CSV/SDF I/O), Docking (adapter-gated dock form + a **3Dmol.js receptor/ligand pose viewer**, demoable on a real RCSB 1HSG sample complex), **Retrosynthesis**, **Matched Pairs & SAR**, Tools (schema-driven registry playground), and Settings (BYO-LLM keys + model routing) — plus a **⌘K command palette** and a molecule inspector openable from any card. See `apps/desktop/README.md` |
 
 Layout follows `docs/11-folder-structure.md` + `docs/13-chemistry-tools-architecture.md`.
-Phase 1 (in progress) adds the auth/tenancy spine (done — see below), and next wires the
-slow-path Celery/Redis queue, real ADMET/docking backends, WebSocket streaming polish,
-2D/3D viewers (RDKit-JS 2D + an interactive 3Dmol.js conformer viewer — done), and notebook export.
+Phase 1 is largely delivered — see the rows tagged *(Phase 1)* above: the auth/tenancy spine,
+the slow-path Celery/Redis queue with WebSocket streaming (`WS /jobs/{id}/stream`,
+`/agent/design/stream`, `/agent/chat/stream`), real ADMET/docking backends, 2D/3D viewers
+(RDKit-JS 2D + an interactive 3Dmol.js conformer viewer), and notebook/report export are all
+in. Still open in the tools layer: input-schema validation and quota/fairness enforcement in
+the execution service (docs/13 §4 steps 1 and 3, §7 — step 1 has no code at all, so
+`ToolSpec.input_schema` is advertised to the model and the Tools screen but never gates a
+call, and step 3 is a lone placeholder comment at `services/tools/executor.py:74`), a
+shared Redis/object-storage result cache (`services/tools/cache.py` is in-memory only), and a
+CI workflow (there is no `.github/workflows`).
 
 **Auth & multi-tenancy.** Identity is owned by **nakitte-carbon-auth** — Glowsky has no
-local credential store and no auth bypass. **Every** request, in every environment,
-presents a platform **JWT** (`Authorization: Bearer <jwt>`; RS256, verified against the
-carbon-auth JWKS). The token's `sub`/`tenant_id`/`roles` become the principal, the tenant
-is **JIT-provisioned** into Glowsky's tables on first sight, and all data is isolated per
-tenant. Point `GLOWSKY_NAKITTE_JWKS_URL` at a running carbon-auth — for local dev too (see
+local credential store and no auth bypass. **Every** request that touches tenant data or
+spends compute, in every environment, presents a platform **JWT**
+(`Authorization: Bearer <jwt>`; RS256, verified against the carbon-auth JWKS) — the handful
+of deliberately ungated endpoints is listed in the **Auth & tenancy** row above. The token's
+`sub`/`tenant_id`/`roles` become the principal, the tenant is **JIT-provisioned** into
+Glowsky's tables on first sight, and all data is isolated per tenant.
+Point `GLOWSKY_NAKITTE_JWKS_URL` at a running carbon-auth — for local dev too (see
 `.env.example`). Roles map to write/read: `owner` → owner, read-only platform roles
 (`viewer`/`auditor`) → viewer, any other role → editor.
 
@@ -235,8 +284,10 @@ curl -s localhost:8000/agent/design -H "authorization: Bearer $TOKEN" \
 curl -s localhost:8000/projects/$PID/runs -H "authorization: Bearer $TOKEN"   # provenance, scoped
 ```
 
-> WebSocket endpoints take the token as a query param (`?token=…`) since a WS handshake
-> can't carry an Authorization header.
+> A WS handshake can't carry an `Authorization` header, so each WebSocket endpoint takes the
+> token another way: `WS /jobs/{id}/stream` reads it from a query param (`?token=…`), while
+> `WS /agent/design/stream` and `WS /agent/chat/stream` read it from a `token` field in the
+> client's first (init) frame.
 
 **Database migrations (Alembic).** SQLite dev/test bootstraps tables via `create_all`,
 but **Alembic is the source of truth** for schema evolution — required for Postgres /
@@ -254,7 +305,9 @@ make migrate-history              # history + current revision
 
 > After changing any model in `services/core/models.py`, run `make migration m="..."`,
 > review the generated file under `migrations/versions/`, and commit it. The
-> `tests/test_migrations.py` drift guard fails CI if models and migrations diverge.
+> `tests/test_migrations.py` drift guard fails if models and migrations diverge — run
+> `make test` before committing a model change. Note there is no CI in this repo yet (no CI
+> config of any kind is tracked), so every check is local.
 
 ---
 
@@ -263,6 +316,6 @@ make migrate-history              # history + current revision
 - **Who:** PhD/academic researchers (lead persona), professional med chemists, CADD scientists (champions), → teams & enterprise.
 - **Wedge:** the agentic design loop + IDE ergonomics + BYO-LLM economics — no incumbent has all three.
 - **MVP litmus test:** with your own LLM key, take a molecule from a natural-language prompt to a validated, visualized, property-annotated, docked, exportable result — **without writing code.**
-- **Stack:** Next.js/TS frontend (RDKit-JS, Mol*, Ketcher, Monaco); Python/FastAPI backend; LangGraph agent; LiteLLM-based BYO-LLM gateway; RDKit + Vina + ADMET/REINVENT/AiZynth chemistry; Postgres + pgvector + Redis + S3/MinIO; Docker/K8s + Helm for SaaS & self-host.
-- **Two existential risks handled in Phase 0:** chemistry hallucination (deterministic firewall + validation) and credential/IP security (KMS-backed gateway, tenant isolation).
+- **Stack — shipped today:** Tauri 2 + React 18 + Vite desktop client (RDKit-JS, 3Dmol.js, Ketcher); Python/FastAPI backend; a hand-written agent orchestrator (no agent framework); LiteLLM-based BYO-LLM gateway; RDKit + AutoDock Vina chemistry; SQLite (dev) / Postgres + Redis (prod) on Docker Compose. **Planned:** pgvector + object storage for literature RAG, generative/retrosynthesis models (REINVENT/AiZynth-class), and K8s + Helm packaging for managed SaaS.
+- **Two existential risks addressed by architecture, from Phase 0 on:** chemistry hallucination (deterministic firewall + validation) and credential/IP security (the gateway resolves provider keys only at call time and never logs or returns them, under strict tenant isolation; stored per-org BYO-LLM keys are Fernet-encrypted at rest under `GLOWSKY_SECRET_KEY` — Phase 1, `services/core/crypto.py`. A managed KMS/secrets-manager path with envelope encryption, per-tenant data keys, and key rotation is still planned — see `docs/07-security-privacy.md` §2).
 - **Roadmap:** Phase 0 foundation → Phase 1 MVP (core loop) → Phase 2 advanced chemistry + teams → Phase 3 extensibility + enterprise.

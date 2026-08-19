@@ -2,6 +2,8 @@
 
 We design for three primary personas and two secondary ones. The product must feel native to **both** a code-comfortable computational researcher and a structure-thinking bench medicinal chemist.
 
+> **Scope note.** This page describes *who we build for*; each "what wins them over" list is a target promise, not an inventory of what ships today. Some of it is real already — the RDKit tool catalog, the agentic design loop, Jupyter-notebook and Markdown run export, per-task model routing, and self-hosting over Docker Compose. Some is not built yet — literature RAG, the authoring Tool SDK (the shipped extensibility seam is opt-in container tools), cost/usage analytics, and an admin console with seat and billing management — and `dock` / `predict_admet` are registered but adapter-gated, refusing until an operator configures a backend. `03-feature-spec.md` and `09-roadmap.md` carry the per-item shipped / partial / planned status.
+
 ---
 
 ## Primary Persona 1 — "Maya," the PhD Student / Academic Researcher
@@ -98,12 +100,14 @@ We design for three primary personas and two secondary ones. The product must fe
 ---
 
 ## Persona → priority mapping
-| Persona | MVP priority | Why |
+| Persona | Priority | Why |
 |---|---|---|
-| Maya (PhD) | **Highest** | Low-friction adopter, BYO-LLM keeps our costs ~0, drives bottom-up growth & word-of-mouth |
-| David (Med chemist) | **High** | Core revenue persona; defines the no-code NL experience |
-| Dr. Chen (CADD) | **High (champion)** | Extensibility + self-host; converts orgs; deferred features OK for MVP |
-| Sara (Admin) | Phase 3 | Enterprise/Team monetization |
-| Alex (Founder) | Phase 2 | Team-tier expansion |
+| Maya (PhD) | **MVP — highest** | Low-friction adopter, BYO-LLM keeps our costs ~0, drives bottom-up growth & word-of-mouth |
+| David (Med chemist) | **MVP — high** | Core revenue persona; defines the no-code NL experience |
+| Dr. Chen (CADD) | **MVP — high (champion)** | Extensibility + self-host; converts orgs; deferred features OK for MVP |
+| Sara (Admin) | Post-MVP — Phase 3 | Enterprise/Team monetization |
+| Alex (Founder) | Post-MVP — Phase 2 | Team-tier expansion |
+
+Phase numbers refer to the sequencing in `09-roadmap.md`; none of those phases is finished, so a persona's phase is when we start serving them, not a delivery date.
 
 **Design tension to hold:** Maya/Chen want power and code escape-hatches; David wants zero code. The interface must let the agent + NL serve David while exposing notebooks, SDK, and raw tool params for Maya/Chen. Progressive disclosure is the answer.

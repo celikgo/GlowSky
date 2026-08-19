@@ -1,5 +1,10 @@
 # Glowsky — Product Vision & Goals
 
+> **Scope note.** This page is the *target state* — the product we are building toward — not an
+> inventory of what ships today. Several things named below (literature RAG, molecule
+> version control, ELN integration, tiered SaaS) are not built. Per-feature build status lives
+> in `03-feature-spec.md` (✅ shipped · 🟡 partial · ⏳ planned) and `09-roadmap.md`.
+
 ## One-line pitch
 **Glowsky is "Cursor for Chemists"** — an AI-native workspace where medicinal chemists and computational researchers design, optimize, analyze, and manage small molecules through natural language, intelligent agents, and rich molecular visualization.
 
@@ -23,11 +28,12 @@ Think: the ergonomics and "flow state" of Cursor/VS Code, applied to molecular d
 ## Core principles
 1. **AI-first, not AI-bolted-on.** The agent and chat are the spine of the product, not a sidebar afterthought. Every object (molecule, project, assay result) is addressable by the agent.
 2. **Deterministic chemistry, probabilistic reasoning.** LLMs *plan and explain*; validated tools (RDKit, predictors, docking) *compute*. We never trust an LLM to emit a final SMILES without canonicalization/validation.
-3. **Bring Your Own LLM.** Researchers and enterprises must control which model touches their IP and where API spend goes. Model choice is a first-class setting, routable per-task.
-4. **The molecule is a first-class citizen.** Versioned, diffable, visualizable in 2D/3D, annotatable — like a file in an IDE.
-5. **Provenance & reproducibility.** Every prediction, generation, and decision is traceable to the tool, model, parameters, and prompt that produced it. Exportable to a notebook or report.
-6. **Trust through transparency.** Show the agent's plan, the tools it called, and confidence/uncertainty. Chemists are skeptical experts; the product earns trust by showing its work.
-7. **Meet users where they are.** Import/export SMILES, SDF, MOL, FASTA, PDB; export to Jupyter; integrate with existing ELNs over time.
+3. **Extensible by contract, not by fork.** A third-party tool joins the registry as a container image plus a `glowsky-tool.yaml` manifest — no Glowsky code change — and, once an operator enables the seam, runs sandboxed with the same caching, validation and provenance as a built-in. The contract is domain-agnostic, so the same spine drives non-chemistry tooling.
+4. **Bring Your Own LLM.** Researchers and enterprises must control which model touches their IP and where API spend goes. Model choice is a first-class setting, routable per-task.
+5. **The molecule is a first-class citizen.** Versioned, diffable, visualizable in 2D/3D, annotatable — like a file in an IDE.
+6. **Provenance & reproducibility.** Every prediction, generation, and decision is traceable to the tool, model, parameters, and prompt that produced it. Exportable to a notebook or report.
+7. **Trust through transparency.** Show the agent's plan, the tools it called, and confidence/uncertainty. Chemists are skeptical experts; the product earns trust by showing its work.
+8. **Meet users where they are.** Import/export SMILES, SDF, MOL, FASTA, PDB; export to Jupyter; integrate with existing ELNs over time.
 
 ## Goals (what success looks like)
 

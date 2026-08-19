@@ -21,7 +21,8 @@ Endpoints:
   POST /molecules/profile       physchem descriptors, druglikeness, PAINS/BRENK
   POST /agent/design            the agentic design loop (plan -> tools -> synthesize)
 
-Auth is gated by GLOWSKY_AUTH_ENABLED (default off -> single-tenant dev mode).
+Auth is mandatory in every environment: there is no bypass flag and no local
+credential store — every request carries a nakitte platform JWT or gets a 401.
 ADMET/docking backends are adapter-gated (GLOWSKY_ADMET_BACKEND / _DOCKING_BACKEND).
 """
 from __future__ import annotations
@@ -32,9 +33,6 @@ from pathlib import Path
 
 import httpx
 import jwt
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
@@ -53,39 +51,37 @@ from apps.api.schemas import (
     CredentialCreate,
     CredentialResponse,
     DesignRequest,
-    LoginRequest,
-    RefreshRequest,
-    SelectTenantRequest,
-    TenantInfo,
-    TokenResponse,
     DiffRequest,
     ImportRequest,
     JobSubmitRequest,
     LibraryCreate,
     LibraryResponse,
+    LoginRequest,
     PrincipalResponse,
     ProfileRequest,
     ProjectCreate,
     ProjectResponse,
+    RefreshRequest,
     RouteResponse,
     RouteUpsert,
+    SelectTenantRequest,
+    TenantInfo,
+    TokenResponse,
     ToolExecuteRequest,
     ValidateRequest,
 )
 from services.agent.chat import run_chat_turn
 from services.agent.orchestrator import DesignOrchestrator
+from services.chemistry import io as chem_io
 from services.chemistry.adapters import BackendNotConfigured
 from services.chemistry.adapters.wiring import configure_backends
-from services.chemistry import io as chem_io
 from services.chemistry.conformers import conformer_molblock
 from services.chemistry.medchem import medchem_rules, mpo_score
 from services.chemistry.properties import profile, structural_alerts
 from services.chemistry.retrosynthesis import synthesizability
 from services.chemistry.validation import validate_and_canonicalize
-from services.reporting import build_markdown, notebook_json
 from services.core.auth import Principal, audit
 from services.core.config import get_settings
-from services.core.nakitte_auth import resolve_nakitte_token
 from services.core.crypto import encrypt, mask, validate_secret_config
 from services.core.db import init_db, session_scope
 from services.core.models import (
@@ -97,12 +93,17 @@ from services.core.models import (
     Molecule,
     Project,
 )
+from services.core.nakitte_auth import resolve_nakitte_token
 from services.llm_gateway.gateway import LLMGateway
 from services.llm_gateway.types import TaskClass
+from services.reporting import build_markdown, notebook_json
 from services.tools.catalog import build_registry
 from services.tools.context import ExecutionContext
 from services.tools.executor import ToolExecutionError, ToolExecutionService
 from services.tools.store import get_store, is_terminal
+
+# Repository root, used to locate the bundled sample receptor under examples/.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @asynccontextmanager
@@ -160,7 +161,7 @@ def _token_is_tenant_scoped(access_token: str) -> bool:
     token automatically for single-tenant users; 0/2+ tenants leave it unscoped (needs select)."""
     try:
         claims = jwt.decode(access_token, options={"verify_signature": False})
-    except Exception:
+    except Exception:  # noqa: BLE001 - any malformed token is simply "not tenant-scoped"
         return False
     return bool(claims.get("tenant_id"))
 
@@ -575,7 +576,7 @@ SUPPORTED_PROVIDERS = [
     {"id": "groq", "label": "Groq", "needs_base_url": False},
     {"id": "local", "label": "Local / OpenAI-compatible", "needs_base_url": True},
 ]
-_PROVIDER_IDS = {p["id"] for p in SUPPORTED_PROVIDERS}
+_PROVIDER_IDS: set[str] = {str(p["id"]) for p in SUPPORTED_PROVIDERS}
 _TASK_CLASSES = ("reasoning", "fast_triage", "codegen")
 
 
@@ -859,9 +860,9 @@ def profile_molecule(
     if not result.valid:
         raise HTTPException(status_code=422, detail=f"invalid molecule: {result.error}")
     return {
-        "canonical_smiles": result.canonical_smiles,
-        "inchikey": result.inchikey,
-        "properties": profile(result.canonical_smiles),
+        "canonical_smiles": result.smiles,
+        "inchikey": result.key,
+        "properties": profile(result.smiles),
     }
 
 
@@ -875,10 +876,10 @@ def assess_molecule(
     result = validate_and_canonicalize(req.smiles)
     if not result.valid:
         raise HTTPException(status_code=422, detail=f"invalid molecule: {result.error}")
-    smiles = result.canonical_smiles
+    smiles = result.smiles
     return {
         "canonical_smiles": smiles,
-        "inchikey": result.inchikey,
+        "inchikey": result.key,
         "properties": profile(smiles),
         "mpo": mpo_score(smiles),
         "rules": medchem_rules(smiles),
@@ -900,7 +901,7 @@ def molecule_conformer(
     if not result.valid:
         raise HTTPException(status_code=422, detail=f"invalid molecule: {result.error}")
     try:
-        conformer = conformer_molblock(result.canonical_smiles)
+        conformer = conformer_molblock(result.smiles)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
@@ -1102,7 +1103,9 @@ async def stream_design(ws: WebSocket) -> None:
         await send({"type": "error", "error": str(exc)})
     except WebSocketDisconnect:
         return
-    except Exception as exc:  # pragma: no cover - defensive: surface, don't hang the client
+    except Exception as exc:  # noqa: BLE001 - pragma: no cover; a WS client that gets no
+        # frame hangs forever, so every failure mode must become a frame, including ones
+        # this handler cannot enumerate (tool backends, RDKit, provider SDKs).
         await send({"type": "error", "error": f"design failed: {exc}"})
     await ws.close()
 
@@ -1156,6 +1159,8 @@ async def stream_chat(ws: WebSocket) -> None:
         await send({"type": "error", "error": str(exc)})
     except WebSocketDisconnect:
         return
-    except Exception as exc:  # pragma: no cover - defensive: surface, don't hang the client
+    except Exception as exc:  # noqa: BLE001 - pragma: no cover; see stream_design above:
+        # an un-framed exception leaves the websocket client waiting on a reply that
+        # never comes.
         await send({"type": "error", "error": f"chat failed: {exc}"})
     await ws.close()

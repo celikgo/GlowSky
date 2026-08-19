@@ -30,6 +30,8 @@ def _run(tool: str, args: dict) -> dict:
     proc = subprocess.run(
         [sys.executable, str(TOOLS_DIR / tool / "tool.py")],
         input=json.dumps(args), capture_output=True, text=True, timeout=30,
+        # The tool's non-zero exits are part of its ABI and are asserted on below.
+        check=False,
     )
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)

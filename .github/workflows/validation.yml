@@ -1,0 +1,177 @@
+# Validation against published reference values.
+#
+# This is the workflow that separates a credible scientific tool from a demo. The
+# rest of CI checks that Glowsky does what Glowsky intends. This one checks that
+# Glowsky agrees with numbers whose author is somebody else: 1128 measured aqueous
+# solubilities from Delaney's compilation, and a ligand binding mode determined by
+# X-ray crystallography and deposited in the PDB.
+#
+# Two properties make it worth having, and both are enforced here rather than assumed:
+#
+#   1. IT CANNOT SILENTLY SKIP. The re-docking benchmark needs AutoDock Vina and
+#      OpenBabel, and skips locally when they are absent. A validation suite whose
+#      headline benchmark quietly skips in CI is worse than no suite: it produces a
+#      green tick that means nothing. GLOWSKY_REQUIRE_DOCKING=1 turns that skip into
+#      a failure, and the step after the run asserts the skip count is zero.
+#
+#   2. docs/VALIDATION.md CANNOT DRIFT. The document is generated from the run, and
+#      this workflow fails if the committed copy differs from what the suite just
+#      measured. A validation page maintained by hand becomes a specific false claim
+#      about accuracy, published under the project's name.
+name: validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: validation-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  benchmarks:
+    name: published reference values
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      # A skip is a failure here. See the header.
+      GLOWSKY_REQUIRE_DOCKING: '1'
+      GLOWSKY_ENVIRONMENT: ci
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # OpenBabel converts the receptor and the docked poses between PDB and PDBQT.
+      #
+      # timeout-minutes on the step, not just the job: apt mirror contention on the
+      # hosted runners has taken this step past ten minutes on some runs, and without a
+      # step bound the job sits until the 45-minute job timeout before saying anything.
+      # Failing in six is faster to diagnose and cheaper to retry.
+      - name: Install OpenBabel
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          # `apt-get update` first is the conventional incantation, and on these
+          # runners it is also the slow part: it refreshes every configured source,
+          # several of which are Azure mirrors that intermittently crawl. Measured on
+          # this workflow it has taken the step from ~40 seconds to over twenty
+          # minutes, repeatedly, with the actual openbabel download unaffected.
+          #
+          # The runner image ships a recent package index, so try the install against
+          # it first and only pay for a refresh if that misses. Both paths end at the
+          # same package; this just stops the common case waiting on the rare one.
+          if sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 openbabel; then
+            echo "installed from the runner's existing package index"
+          else
+            echo "index miss — refreshing and retrying"
+            sudo apt-get update -o Acquire::Retries=3
+            sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 openbabel
+          fi
+          obabel -V
+
+      # AutoDock Vina's official static x86_64 release binary — the same version and
+      # the same source that infra/docker/docking.Dockerfile pins, so the benchmark
+      # measures the engine the shipped image actually runs.
+      - name: Install AutoDock Vina
+        timeout-minutes: 5
+        env:
+          VINA_VERSION: 1.2.5
+        run: |
+          curl -fsSL -o /usr/local/bin/vina \
+            "https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v${VINA_VERSION}/vina_${VINA_VERSION}_linux_x86_64"
+          sudo chmod +x /usr/local/bin/vina
+          vina --version
+
+      - name: Record the environment
+        # A validation number is only meaningful beside the versions that produced it,
+        # and docs/VALIDATION.md reports them.
+        run: |
+          python -c "import sys; print('python ', sys.version.split()[0])"
+          python -c "import rdkit; print('rdkit  ', rdkit.__version__)"
+          vina --version | head -1
+
+      - name: Run the validation suite
+        run: |
+          pytest tests/validation/ -v --tb=short --junitxml=validation-junit.xml
+
+      # Belt and braces alongside GLOWSKY_REQUIRE_DOCKING: assert directly against the
+      # JUnit report that nothing was skipped. If a future test grows its own skip
+      # condition that does not consult that variable, this still catches it.
+      - name: no benchmark may have skipped
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          suite = ET.parse("validation-junit.xml").getroot()
+          # <testsuites> wraps one <testsuite>.
+          ts = suite.find("testsuite") if suite.tag == "testsuites" else suite
+          tests = int(ts.get("tests", 0))
+          skipped = int(ts.get("skipped", 0))
+          print(f"{tests} validation tests, {skipped} skipped")
+          if skipped:
+              names = [
+                  tc.get("name")
+                  for tc in ts.iter("testcase")
+                  if tc.find("skipped") is not None
+              ]
+              raise SystemExit(f"validation tests skipped in CI: {names}")
+          if tests == 0:
+              raise SystemExit("no validation tests ran at all")
+          PY
+
+      # NOT a byte-for-byte diff against a freshly rendered document, deliberately.
+      # Vina is multithreaded and not bit-reproducible even with a fixed seed, so the
+      # re-docking RMSD moves between runs on identical code. A byte diff would fail
+      # constantly for reasons unrelated to the document being wrong, and a gate that
+      # cries wolf gets switched off. This checks the things that make the document
+      # honest instead: every measured capability present, every PASS/FAIL matching the
+      # run, and nothing without a passing benchmark presented as validated.
+      - name: docs/VALIDATION.md agrees with what the suite measured
+        run: python -m tests.validation.report --check
+
+      # Print the failing benchmarks explicitly. The suite is green when nothing has
+      # REGRESSED, which is not the same as everything meeting its criterion — and the
+      # difference must be visible in the run, not only in the document.
+      - name: report which benchmarks do not meet their criterion
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          path = pathlib.Path("docs/validation-results.json")
+          if not path.exists():
+              raise SystemExit("no validation results recorded")
+          results = json.loads(path.read_text())
+          failing = [r for r in results if not r["passed"]]
+          for r in results:
+              mark = "PASS" if r["passed"] else "FAIL"
+              print(f"[{mark}] {r['capability']}: {r['metrics']}")
+          if failing:
+              names = ", ".join(r["capability"] for r in failing)
+              print(f"\n::warning::{len(failing)} benchmark(s) do not meet their "
+                    f"criterion and are published as failing in docs/VALIDATION.md: {names}")
+          PY
+
+      - name: Upload the raw results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-results
+          path: |
+            docs/validation-results.json
+            validation-junit.xml
+          if-no-files-found: warn

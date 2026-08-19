@@ -117,14 +117,13 @@ def test_chat_design_without_seed_asks_for_one():
 
 
 def test_chat_stream_design_turn_relays_milestones():
-    with TestClient(app) as client:
-        with client.websocket_connect("/agent/chat/stream") as ws:
-            ws.send_json({
-                "messages": [{"role": "user", "content": "make 8 analogs, MW<300, no PAINS"}],
-                "seed_smiles": "c1ccccc1C(=O)O",
-                "persist": True,
-            })
-            events = _drain(ws)
+    with TestClient(app) as client, client.websocket_connect("/agent/chat/stream") as ws:
+        ws.send_json({
+            "messages": [{"role": "user", "content": "make 8 analogs, MW<300, no PAINS"}],
+            "seed_smiles": "c1ccccc1C(=O)O",
+            "persist": True,
+        })
+        events = _drain(ws)
 
     types = [e["type"] for e in events]
     assert types[0] == "started"
@@ -137,12 +136,11 @@ def test_chat_stream_design_turn_relays_milestones():
 
 
 def test_chat_stream_conversational_turn_sends_assistant_message():
-    with TestClient(app) as client:
-        with client.websocket_connect("/agent/chat/stream") as ws:
-            ws.send_json({
-                "messages": [{"role": "user", "content": "hello, what can you help with?"}],
-            })
-            events = _drain(ws)
+    with TestClient(app) as client, client.websocket_connect("/agent/chat/stream") as ws:
+        ws.send_json({
+            "messages": [{"role": "user", "content": "hello, what can you help with?"}],
+        })
+        events = _drain(ws)
 
     types = [e["type"] for e in events]
     assert "assistant_message" in types

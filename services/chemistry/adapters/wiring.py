@@ -20,19 +20,19 @@ def configure_backends(settings=None) -> dict:
     if settings.admet_backend == "rdkit":
         from services.chemistry.adapters.admet_rdkit import RDKitQSPRADMET
 
-        backend = RDKitQSPRADMET()
-        admet.set_backend(backend)
-        summary["admet"] = backend.name
+        admet_backend = RDKitQSPRADMET()
+        admet.set_backend(admet_backend)
+        summary["admet"] = admet_backend.name
 
     if settings.docking_backend == "vina":
         from services.chemistry.adapters.vina import VinaDockingBackend
 
-        backend = VinaDockingBackend(
+        docking_backend = VinaDockingBackend(
             vina_bin=settings.vina_bin,
             obabel_bin=settings.obabel_bin,
             receptors_dir=settings.docking_receptors_dir,
         )
-        docking.set_backend(backend)
-        summary["docking"] = backend.name
+        docking.set_backend(docking_backend)
+        summary["docking"] = docking_backend.name
 
     return summary

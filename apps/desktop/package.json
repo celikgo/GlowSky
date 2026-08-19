@@ -1,9 +1,9 @@
 {
   "name": "glowsky-desktop",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.1.0",
   "type": "module",
-  "description": "Glowsky desktop app — the AI-native workspace for small-molecule drug design.",
+  "description": "Glowsky desktop app \u2014 the AI-native workspace for small-molecule drug design.",
   "scripts": {
     "postinstall": "node scripts/copy-rdkit.mjs",
     "predev": "node scripts/copy-rdkit.mjs",
@@ -16,7 +16,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "desktop": "tauri dev",
-    "desktop:build": "tauri build"
+    "desktop:build": "tauri build",
+    "lint": "eslint ."
   },
   "dependencies": {
     "3dmol": "^2.5.5",
@@ -30,6 +31,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.1.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
@@ -37,8 +39,12 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.4",
     "jsdom": "^26.1.0",
     "typescript": "^5.6.3",
+    "typescript-eslint": "^8.67.0",
     "vite": "^6.0.3",
     "vite-plugin-node-polyfills": "^0.28.0",
     "vitest": "^3.2.7"

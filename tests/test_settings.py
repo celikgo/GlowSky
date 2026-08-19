@@ -24,7 +24,6 @@ from services.llm_gateway.gateway import LLMGateway
 from services.llm_gateway.types import TaskClass
 from tests.conftest import tenant
 
-
 # --- crypto -------------------------------------------------------------------
 
 

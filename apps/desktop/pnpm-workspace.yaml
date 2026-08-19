@@ -1,3 +1,26 @@
+# esbuild ships a platform-specific binary that its install script fetches. Vite
+# needs it, and pnpm 10+ refuses to run install scripts unless a package is named
+# here. The previous value was pnpm's own placeholder text ("set this to true or
+# false"), which is not a boolean — under a non-interactive `pnpm install` in CI
+# that leaves the build unapproved and the run ends on ERR_PNPM_IGNORED_BUILDS.
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
 verifyDepsBeforeRun: false
+
+# GHSA-v2hh-gcrm-f6hx, GHSA-7p8r-x3mc-p8w7, GHSA-4c8g-83qw-93j6 — three HIGH
+# host-confusion advisories against fast-uri < 3.1.5 (backslash authority
+# introducer, failed IDN canonicalization). It is not a direct dependency: it
+# arrives as ketcher-react > ajv > fast-uri, and ajv's own dependency range
+# already admits the fixed release — ketcher-react just pins an older ajv. An
+# override to the patched version is the narrowest fix that does not require
+# waiting on an upstream ketcher release.
+#
+# This lives here rather than under `pnpm.overrides` in package.json because pnpm
+# reads its settings from this file when a workspace file exists; the package.json
+# form is silently ignored, which looks exactly like a fix that worked.
+# '^3.1.5', not '>=3.1.5': the latter resolves to 4.x, which violates ajv's own
+# declared range (^3.0.1) — an override silences the resolver's objection, it does
+# not make the major bump compatible. 3.1.5 is the last release on the 3.x line and
+# carries all three fixes, so it satisfies ajv AND the advisories.
+overrides:
+  fast-uri: '^3.1.5'

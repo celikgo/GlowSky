@@ -8,12 +8,14 @@ single-member org (docs/06). Bearer API keys store only a hash; plaintext is sho
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-# Built-in single-tenant identifiers used when GLOWSKY_AUTH_ENABLED is False.
+# Built-in single-tenant identifiers, used as the seed org/user for local development
+# fixtures. They are NOT an auth bypass: every request still resolves a principal from
+# a nakitte JWT (apps/api/deps.py).
 LOCAL_ORG_ID = "local-org"
 LOCAL_USER_ID = "local-user"
 
@@ -23,7 +25,7 @@ def _uuid() -> str:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):

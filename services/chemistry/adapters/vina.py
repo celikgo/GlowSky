@@ -153,7 +153,9 @@ class VinaDockingBackend:
         pdb_path = os.path.join(workdir, "ligand.pdb")
         pdbqt_path = os.path.join(workdir, "ligand.pdbqt")
         Chem.MolToPDBFile(mol, pdb_path)
-        subprocess.run(
+        subprocess.run(  # noqa: S603 - argv list, shell=False. The only caller-influenced
+            # value is the ligand SMILES, and it never reaches this call as text: it was
+            # parsed by RDKit and written out as a file above. Both paths are ours.
             [self.obabel_bin, pdb_path, "-O", pdbqt_path, "--partialcharge", "gasteiger"],
             check=True, capture_output=True, text=True,
         )
@@ -186,8 +188,11 @@ class VinaDockingBackend:
             ligand_pdbqt = self._prepare_ligand_pdbqt(ligand_smiles, workdir)
             out_path = os.path.join(workdir, "out.pdbqt")
             cmd = self.build_command(receptor_ref, ligand_pdbqt, out_path, pocket)
-            proc = subprocess.run(cmd, check=True, capture_output=True, text=True,
-                                  timeout=self.resources_timeout_s)
+            proc = subprocess.run(  # noqa: S603 - argv list from build_command(), shell=False.
+                # receptor_ref was forced under receptors_dir by _resolve_receptor(); the
+                # pocket numbers are floats; the ligand is a file we wrote.
+                cmd, check=True, capture_output=True, text=True,
+                timeout=self.resources_timeout_s)
             poses = self.parse_output(proc.stdout)
             if not poses:
                 raise RuntimeError(f"Vina produced no poses; stdout:\n{proc.stdout[-500:]}")

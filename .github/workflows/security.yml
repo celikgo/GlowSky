@@ -1,0 +1,163 @@
+# Glowsky holds other people's LLM API keys. That is the whole threat model:
+# users paste an Anthropic/OpenAI/Groq key into a self-hosted instance, it is
+# Fernet-encrypted at rest, and a path that leaks it — or that silently encrypts
+# it under the public in-source development key — ends the product.
+#
+# The two most recent security fixes in this repository were both in that class:
+#
+#   338e08a fix(security): gate /agent/* on require_write and make secret guard
+#           fail-safe (GS-H1, GS-H3)
+#
+# Regression tests for both already exist. What did not exist was anything that
+# ran them before a merge. That is what this file is.
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly, Monday 06:00 UTC. A dependency audit is the one check whose result
+    # can change with no commit at all, because the vulnerability database moves
+    # underneath a repository that is standing still.
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  regressions:
+    name: credential + RBAC regressions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # GS-H1 — the secret guard must FAIL SAFE. An unset GLOWSKY_ENVIRONMENT is
+      # treated as production, and a production instance with no GLOWSKY_SECRET_KEY
+      # refuses to boot rather than fall back to the deterministic dev key, which is
+      # public by construction because it is in this repository.
+      #
+      # Named individually rather than as a whole file: these are the assertions
+      # 338e08a added, and a rename that quietly drops one should fail here.
+      - name: GS-H1 secret guard fails safe
+        run: |
+          pytest -q tests/test_settings.py \
+            -k "secret_key or default_environment or dev_key or dev_like_environments" \
+            -v
+
+      # GS-H3 — /agent/design and /agent/chat execute tools and persist rows, so
+      # they are WRITE paths. A viewer-role principal must be refused on REST (403)
+      # and on the websocket variants (an error frame), exactly like /tools/{name}.
+      - name: GS-H3 /agent/* is gated on require_write
+        run: pytest -q tests/test_rbac_agent.py -v
+
+      # Tenant isolation and encryption-at-rest for the stored provider keys.
+      - name: BYO-LLM credential handling
+        run: pytest -q tests/test_settings.py tests/test_auth.py tests/test_nakitte_auth.py
+
+  dependencies:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pip-audit
+
+      # Blocking, not advisory. A known-vulnerable dependency in a service that
+      # decrypts API keys is not something to notice in a report later.
+      #
+      # `--skip-editable` skips glowsky itself, which is installed from this tree
+      # and is not on PyPI to be audited against.
+      - name: pip-audit
+        run: pip-audit --skip-editable --progress-spinner off
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      - name: Install desktop deps
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+
+      # High and critical only, and the reason is not squeamishness: the renderer
+      # is a Tauri webview with no untrusted content in it, and the npm advisory
+      # feed carries a steady stream of low-severity findings in build-time-only
+      # packages. Gating on those would train everyone to ignore this job, which
+      # is worse than not having it.
+      - name: pnpm audit (high + critical)
+        working-directory: apps/desktop
+        run: pnpm audit --audit-level high --prod
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history: a key that was committed and then removed in a later
+          # commit is still a leaked key. Scanning only the tip would miss exactly
+          # the case that matters.
+          fetch-depth: 0
+
+      # The gitleaks binary via its published image, rather than the marketplace
+      # action, which asks organisations for a licence key. This needs none.
+      - name: gitleaks
+        run: |
+          docker run --rm -v "${PWD}:/repo" -w /repo \
+            zricethezav/gitleaks:latest \
+            detect --source /repo --redact --verbose --no-banner \
+            --config /repo/.gitleaks.toml
+
+      # A targeted check gitleaks cannot make, because it does not know what these
+      # files mean here: .env holds real provider keys and must never be committed,
+      # and .env.example must stay a template with its value fields empty.
+      - name: no .env committed, and .env.example carries no real key
+        run: |
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo "::error file=.env::.env is committed; it holds real provider credentials"
+            exit 1
+          fi
+          # GLOWSKY_SECRET_KEY is a 44-character urlsafe-base64 Fernet key. In the
+          # template it must be empty.
+          if grep -Eq '^GLOWSKY_SECRET_KEY=.+' .env.example; then
+            echo "::error file=.env.example::GLOWSKY_SECRET_KEY must be empty in the template"
+            exit 1
+          fi
+          # Provider key prefixes, in any tracked file that is not documentation
+          # about the prefixes themselves.
+          if git grep -nIE '(sk-ant-api[0-9]{2}-|sk-proj-|gsk_)[A-Za-z0-9_-]{24,}' \
+               -- . ':(exclude).gitleaks.toml' ':(exclude).github/workflows/security.yml'; then
+            echo "::error::a string matching a live provider key prefix is committed"
+            exit 1
+          fi
+          echo "no committed credentials found"

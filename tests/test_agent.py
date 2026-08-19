@@ -52,6 +52,6 @@ async def test_design_loop_rejects_invalid_seed():
     orch = DesignOrchestrator()
     try:
         await orch.run(goal="make analogs", seed_smiles="not-a-molecule((")
-        assert False, "should have raised"
+        raise AssertionError("should have raised")
     except ValueError:
         pass

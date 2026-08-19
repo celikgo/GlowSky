@@ -57,7 +57,9 @@ class DesignOrchestrator:
         resp = await self._gw.complete(req)
         try:
             return DesignPlan(**json.loads(resp.text))
-        except Exception:
+        except Exception:  # noqa: BLE001 - the input is LLM output: json.JSONDecodeError,
+            # TypeError and pydantic's ValidationError are all reachable, and a new provider
+            # SDK can add more. Any unparseable plan degrades to the fallback plan.
             return DesignPlan(rationale="fallback plan (model returned unparseable JSON)")
 
     @staticmethod
@@ -97,9 +99,7 @@ class DesignOrchestrator:
             return False
         if c.exclude_pains and props.get("has_pains"):
             return False
-        if c.require_lipinski and not props.get("lipinski_pass"):
-            return False
-        return True
+        return not (c.require_lipinski and not props.get("lipinski_pass"))
 
     async def _explain(self, plan: DesignPlan, candidates: list[Candidate]) -> str:
         kept = [c for c in candidates if c.passed_filters]

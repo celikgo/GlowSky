@@ -5,6 +5,8 @@ from manifests in Phase 3. Projects can pin a version for exact reproducibility.
 """
 from __future__ import annotations
 
+import builtins
+
 from services.tools.spec import ToolSpec
 
 
@@ -29,10 +31,14 @@ class ToolRegistry:
             raise KeyError(f"unknown version {version!r} for tool {name}")
         return self._tools[name][version]
 
-    def list(self) -> list[ToolSpec]:
+    def list(self) -> builtins.list[ToolSpec]:
+        # `builtins.list`, spelled out: inside this class body the bare name `list`
+        # refers to THIS method, so `-> list[ToolSpec]` annotates the return type as
+        # the method itself. PEP 563 defers the evaluation, so it never raised at
+        # runtime — it was simply an annotation that did not mean what it read as.
         return [self.resolve(name) for name in self._tools]  # latest of each
 
-    def specs(self) -> list[dict]:
+    def specs(self) -> builtins.list[dict]:
         return [t.discovery_dict() for t in self.list()]
 
 

@@ -115,7 +115,10 @@ def build_notebook(run: dict, molecules: list[dict]) -> dict:
     ))
 
     if trace:
-        trace_md = "## 6. Execution trace (provenance)\n\n| step | tool | summary | ms | cache |\n|---|---|---|---|---|\n"
+        trace_md = (
+            "## 6. Execution trace (provenance)\n\n"
+            "| step | tool | summary | ms | cache |\n|---|---|---|---|---|\n"
+        )
         for t in trace:
             trace_md += (
                 f"| {t.get('step', '')} | `{t.get('tool', '')}@{t.get('tool_version', '')}` "

@@ -120,7 +120,7 @@ def matched_pairs(
                 if key in seen:
                     continue
                 seen.add(key)
-                rec = {
+                rec: dict = {
                     "a": m1,
                     "b": m2,
                     "transformation": f"{f1}>>{f2}",
@@ -154,7 +154,7 @@ def sar_transforms(
     for p in result["pairs"]:
         by_transform.setdefault(p["transformation"], []).append(p["delta"])
 
-    transforms = []
+    transforms: list[dict] = []
     for t, deltas in by_transform.items():
         if len(deltas) < min_count:
             continue

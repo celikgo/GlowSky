@@ -72,7 +72,8 @@ class Settings(BaseSettings):
 
     # --- Secrets at rest ---
     # Fernet key (44-char urlsafe-base64) used to encrypt stored BYO-LLM credentials.
-    # Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Generate one with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     # If unset, a deterministic DEV key is derived — fine for local dev, NEVER production.
     secret_key: str | None = None
 

@@ -56,7 +56,9 @@ def test_notebook_code_cells_actually_execute():
     for cell in nb["cells"]:
         if cell["cell_type"] == "code":
             n_code += 1
-            exec(compile("".join(cell["source"]), f"<cell {n_code}>", "exec"), ns)
+            # Running the exported notebook is the assertion. A notebook that
+            # claims to reproduce a run has to be executed to know whether it does.
+            exec(compile("".join(cell["source"]), f"<cell {n_code}>", "exec"), ns)  # noqa: S102
     assert n_code >= 4
     assert len(ns["df"]) == 1            # one generated candidate, descriptors recomputed
     assert "passes" in ns["df"].columns  # constraints re-applied locally

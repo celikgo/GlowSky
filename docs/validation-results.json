@@ -1,0 +1,55 @@
+[
+  {
+    "benchmark": "1HSG self-docking, heavy-atom RMSD to the deposited pose",
+    "capability": "Docking \u2014 re-docking a crystallographic pose",
+    "environment": {
+      "engine": "AutoDock Vina v1.2.5",
+      "python": "3.13.15",
+      "rdkit": "2026.03.5"
+    },
+    "gates": {
+      "best_pose_rmsd_angstrom": "not gated (diagnostic)",
+      "rmsd_angstrom": "<= 2.0"
+    },
+    "metrics": {
+      "best_pose_rmsd_angstrom": 0.853,
+      "n_poses": 8,
+      "rmsd_angstrom": 4.725,
+      "top_score_kcal_per_mol": -10.23
+    },
+    "model": "AutoDock Vina via services/chemistry/adapters/vina.py (AutoDock Vina v1.2.5)",
+    "n": 1,
+    "notes": "Self-docking: the receptor is already in the conformation this ligand induced, which is the easiest case in structure-based modelling. It is evidence that the SMILES -> embed -> PDBQT -> Vina -> pose-parse pipeline is correct end to end, NOT evidence that Glowsky can place a novel ligand. The score is reported for completeness and is not a binding affinity. One structure bounds nothing about average performance.",
+    "passed": false,
+    "source": "RCSB PDB 1HSG \u2014 Chen, Z. et al., J. Biol. Chem. 269, 26344 (1994); success criterion from Trott & Olson, J. Comput. Chem. 31, 455-461 (2010)",
+    "source_url": "https://doi.org/10.2210/pdb1hsg/pdb"
+  },
+  {
+    "benchmark": "Delaney / ESOL compilation, 1128 measured aqueous solubilities",
+    "capability": "ADMET \u2014 aqueous solubility (logS)",
+    "environment": {
+      "python": "3.13.2",
+      "rdkit": "2026.03.5"
+    },
+    "gates": {
+      "fraction_within_1_log": ">= 0.65",
+      "mae_log_units": "<= 0.9",
+      "mean_signed_error": "|x| <= 0.35",
+      "r_squared": ">= 0.7",
+      "rmse_log_units": "<= 1.15"
+    },
+    "metrics": {
+      "fraction_within_1_log": 0.6809,
+      "mae_log_units": 0.8439,
+      "mean_signed_error": 0.2782,
+      "r_squared": 0.7247,
+      "rmse_log_units": 1.0994
+    },
+    "model": "ESOL (Delaney 2004 coefficients), as implemented in services/chemistry/adapters/admet_rdkit.py",
+    "n": 1128,
+    "notes": "Reproduction of a published model on its own domain, NOT generalisation: the Delaney compilation includes the compounds ESOL was fitted on. An RMSE near one log unit is a factor of ten in concentration, which is why the predictor returns an interval rather than a point estimate. The measured RMSE here is the value used to build every solubility confidence interval Glowsky reports.",
+    "passed": true,
+    "source": "Delaney, J. S., J. Chem. Inf. Comput. Sci. 44(3), 1000-1005 (2004); retrieved via MoleculeNet (Wu et al., Chem. Sci. 9, 513-530, 2018)",
+    "source_url": "https://doi.org/10.1021/ci034243x"
+  }
+]

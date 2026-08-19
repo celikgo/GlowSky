@@ -2,11 +2,35 @@
 
 All values are deterministic and computed locally — no LLM involved. ADMET/ML
 predictors plug in alongside these in Phase 1 (services.chemistry.prediction).
+
+These are the only numbers in Glowsky that are EXACT for a given structure, which is
+why they carry no uncertainty band: MW, HBD/HBA counts, ring counts and heavy-atom
+counts are properties of the graph, and two correct implementations must agree.
+
+Three values here are not in that category and are worth naming:
+    logp    Crippen's atomic-contribution estimate, a MODEL of octanol/water
+            partitioning, not a measurement.  https://doi.org/10.1021/ci990307l
+    tpsa    Ertl's fragment-based polar surface area — a fast surrogate for the 3D
+            quantity, not the 3D quantity.     https://doi.org/10.1021/jm000942e
+    qed     Bickerton's desirability aggregate, which encodes a preference in the same
+            way MPO does.                      https://doi.org/10.1038/nchem.1243
+
+WHAT THIS IS NOT
+    - The alerts are not toxicity predictions. PAINS (https://doi.org/10.1021/jm901137j)
+      flags substructures associated with ASSAY INTERFERENCE — compounds that produce
+      false positives in screens — and BRENK (https://doi.org/10.1002/cmdc.200700139)
+      flags groups undesirable in a screening library. A PAINS match is a reason to
+      check the assay readout, not evidence a compound is toxic, and a clean result is
+      not evidence it is safe.
+    - Both catalogues were derived in specific screening contexts and are known to fire
+      on legitimate chemistry; several marketed drugs match a PAINS pattern.
+    - druglikeness() reports rule outcomes, not probabilities of success. See
+      services/chemistry/medchem.py for what those rules are and are not.
 """
 from __future__ import annotations
 
 from rdkit import Chem
-from rdkit.Chem import Crippen, Descriptors, QED, rdMolDescriptors
+from rdkit.Chem import QED, Crippen, Descriptors, rdMolDescriptors
 from rdkit.Chem.FilterCatalog import FilterCatalog, FilterCatalogParams
 
 # Build alert catalogs once at import (cheap, reused across calls).

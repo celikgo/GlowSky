@@ -2,8 +2,10 @@ PY ?= .venv313/bin/python
 PIP ?= .venv313/bin/pip
 ALEMBIC ?= $(PY) -m alembic
 
-.PHONY: venv install test run demo clean migrate migration migrate-down migrate-history \
-        desktop desktop-install desktop-build
+.PHONY: venv install test cov validate dois social lint fix run demo clean migrate \
+        migration \
+        migrate-down \
+        migrate-history desktop desktop-install desktop-build
 
 venv:                ## Create the Python 3.13 virtualenv (RDKit-compatible)
 	/opt/homebrew/bin/python3.13 -m venv .venv313
@@ -13,6 +15,28 @@ install:             ## Install the package + dev deps (editable)
 
 test:                ## Run the test suite
 	$(PY) -m pytest -q
+
+cov:                 ## Run the test suite with coverage (same gate as CI)
+	$(PY) -m pytest -q --cov=services --cov=apps \
+		--cov-report=term-missing:skip-covered --cov-fail-under=85
+
+validate:            ## Run the validation suite and regenerate docs/VALIDATION.md
+	rm -f validation-results.json
+	$(PY) -m pytest tests/validation/ -v
+	$(PY) -m tests.validation.report
+
+social:              ## Regenerate the social-preview image from live computed values
+	$(PY) -m scripts.make_social_preview
+
+dois:                ## Verify every DOI cited in the tree is registered (needs network)
+	$(PY) -m scripts.check_dois
+
+lint:                ## ruff + mypy — the exact checks .github/workflows/ci.yml runs
+	$(PY) -m ruff check apps services tests scripts migrations
+	$(PY) -m mypy
+
+fix:                 ## Apply ruff's safe autofixes
+	$(PY) -m ruff check apps services tests scripts migrations --fix
 
 run:                 ## Start the API (offline mock LLM by default)
 	$(PY) -m uvicorn apps.api.main:app --reload --port 8000

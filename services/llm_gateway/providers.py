@@ -73,7 +73,9 @@ class LiteLLMProvider:
         for tc in raw:
             fn = tc.get("function") if isinstance(tc, dict) else getattr(tc, "function", None)
             name = (fn.get("name") if isinstance(fn, dict) else getattr(fn, "name", None)) or ""
-            raw_args = (fn.get("arguments") if isinstance(fn, dict) else getattr(fn, "arguments", None)) or "{}"
+            raw_args = (
+                fn.get("arguments") if isinstance(fn, dict) else getattr(fn, "arguments", None)
+            ) or "{}"
             try:
                 args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
             except (json.JSONDecodeError, TypeError, ValueError):

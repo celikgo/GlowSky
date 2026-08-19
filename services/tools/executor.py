@@ -186,9 +186,12 @@ def _firewall_validate(output) -> None:
 
     def walk(node):
         if isinstance(node, dict):
-            if "smiles" in node and isinstance(node["smiles"], str):
-                if not validate_and_canonicalize(node["smiles"]).valid:
-                    raise ValueError(f"firewall: tool emitted invalid structure {node['smiles']!r}")
+            if (
+                "smiles" in node
+                and isinstance(node["smiles"], str)
+                and not validate_and_canonicalize(node["smiles"]).valid
+            ):
+                raise ValueError(f"firewall: tool emitted invalid structure {node['smiles']!r}")
             for v in node.values():
                 walk(v)
         elif isinstance(node, (list, tuple)):

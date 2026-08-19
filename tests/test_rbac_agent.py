@@ -76,29 +76,26 @@ def test_writer_can_run_design_and_chat():
 @pytest.mark.real_auth
 def test_viewer_cannot_stream_design():
     token = make_token(roles=["viewer"])
-    with TestClient(app) as client:
-        with client.websocket_connect("/agent/design/stream") as ws:
-            ws.send_json({**_DESIGN_BODY, "token": token})
-            events = _drain_ws(ws)
+    with TestClient(app) as client, client.websocket_connect("/agent/design/stream") as ws:
+        ws.send_json({**_DESIGN_BODY, "token": token})
+        events = _drain_ws(ws)
     assert events == [{"type": "error", "error": "insufficient role (read-only)"}]
 
 
 @pytest.mark.real_auth
 def test_viewer_cannot_stream_chat():
     token = make_token(roles=["viewer"])
-    with TestClient(app) as client:
-        with client.websocket_connect("/agent/chat/stream") as ws:
-            ws.send_json({**_CHAT_BODY, "token": token})
-            events = _drain_ws(ws)
+    with TestClient(app) as client, client.websocket_connect("/agent/chat/stream") as ws:
+        ws.send_json({**_CHAT_BODY, "token": token})
+        events = _drain_ws(ws)
     assert events == [{"type": "error", "error": "insufficient role (read-only)"}]
 
 
 @pytest.mark.real_auth
 def test_writer_can_stream_design():
     token = make_token(roles=["owner"])
-    with TestClient(app) as client:
-        with client.websocket_connect("/agent/design/stream") as ws:
-            ws.send_json({**_DESIGN_BODY, "token": token})
-            events = _drain_ws(ws)
+    with TestClient(app) as client, client.websocket_connect("/agent/design/stream") as ws:
+        ws.send_json({**_DESIGN_BODY, "token": token})
+        events = _drain_ws(ws)
     types = [e["type"] for e in events]
     assert types[0] == "started" and types[-1] == "complete"

@@ -52,9 +52,8 @@ def test_stream_batch_job_emits_item_events():
 
 
 def test_unknown_job_stream_reports_failure():
-    with TestClient(app) as client:
-        with client.websocket_connect("/jobs/does-not-exist/stream") as ws:
-            events = _drain(ws)
+    with TestClient(app) as client, client.websocket_connect("/jobs/does-not-exist/stream") as ws:
+        events = _drain(ws)
     assert events and events[-1]["type"] == "failed"
 
 

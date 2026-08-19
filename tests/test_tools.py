@@ -4,7 +4,6 @@ import pytest
 
 from services.chemistry.adapters import BackendNotConfigured
 from services.tools.catalog import build_default_registry
-from services.tools.context import ExecutionContext
 from services.tools.executor import ToolExecutionError, ToolExecutionService
 from services.tools.spec import ComputeClass
 

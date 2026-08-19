@@ -64,7 +64,6 @@ export function SettingsScreen() {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const credFor = (provider: string) => creds.find((c) => c.provider === provider);

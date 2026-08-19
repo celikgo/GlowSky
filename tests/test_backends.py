@@ -13,6 +13,7 @@ from services.chemistry.adapters import BackendNotConfigured, admet, docking
 from services.chemistry.adapters.admet_rdkit import RDKitQSPRADMET
 from services.chemistry.adapters.docking import Pocket
 from services.chemistry.adapters.vina import VinaDockingBackend
+from services.chemistry.provenance import Domain, ModelKind, UncertaintyBasis
 from services.tools.catalog import build_default_registry
 from services.tools.context import ExecutionContext
 from services.tools.executor import ToolExecutionService
@@ -33,21 +34,87 @@ def admet_backend(backend):
 # --- RDKit-QSPR ADMET ---------------------------------------------------------
 
 
-def test_rdkit_admet_returns_all_endpoints_with_provenance():
+def test_every_admet_endpoint_carries_uncertainty_domain_and_provenance():
+    """No endpoint may return a bare number.
+
+    This is the structural half of the honesty rule: a caller can always ask any
+    endpoint how wrong it might be, whether this molecule is even in scope, and which
+    model said so. An endpoint added later that forgets one of the three fails here.
+    """
     out = RDKitQSPRADMET().predict(ASPIRIN, RDKitQSPRADMET.endpoints)
     assert set(out) == set(RDKitQSPRADMET.endpoints)
     for ep, pred in out.items():
         assert "value" in pred, ep
-        assert "method" in pred and "confidence" in pred  # honest provenance on every value
-        assert pred["applicability_domain"] in {"in", "borderline", "out"}
+
+        # Uncertainty, with the basis for it stated.
+        unc = pred["uncertainty"]
+        assert unc["basis"] in {b.value for b in UncertaintyBasis}, ep
+        # A point estimate must carry a band; a categorical one must carry a probability.
+        assert ("interval" in unc) or ("probability" in unc), ep
+        # An error bar with no stated origin is decoration.
+        assert unc.get("source"), ep
+
+        # Applicability domain, with the individual checks visible.
+        ad = pred["applicability_domain"]
+        assert ad["verdict"] in {d.value for d in Domain}, ep
+        assert ad["explanation"], ep
+
+        # Provenance: which model, what kind of thing it is, fitted on what, and —
+        # for anything claiming to be published — an actual citation.
+        prov = pred["provenance"]
+        assert prov["model"] and prov["version"] and prov["trained_on"], ep
+        assert prov["kind"] in {k.value for k in ModelKind}, ep
+        if prov["kind"] in {ModelKind.PUBLISHED_QSPR.value, ModelKind.PUBLISHED_RULE.value}:
+            assert prov["citations"], f"{ep} claims to be published but cites nothing"
+
+
+def test_unvalidated_endpoints_say_so_rather_than_passing_as_qspr():
+    """The heuristics must not be dressed up as the one validated model.
+
+    Presenting a uniform "ADMET panel" is how an in-house correlation ends up quoted
+    like a measurement. Solubility is a published regression; logD, hERG, CYP3A4,
+    metabolic stability and PPB are not, and the payload has to make that visible.
+    """
+    out = RDKitQSPRADMET().predict(ASPIRIN, RDKitQSPRADMET.endpoints)
+
+    assert out["solubility"]["provenance"]["kind"] == ModelKind.PUBLISHED_QSPR.value
+    assert out["solubility"]["uncertainty"]["basis"] == UncertaintyBasis.MEASURED_BENCHMARK.value
+
+    for ep in ("logd", "herg", "cyp3a4", "metabolic_stability", "ppb"):
+        assert out[ep]["provenance"]["kind"] == ModelKind.HEURISTIC.value, ep
+        assert "unvalidated" in out[ep]["provenance"]["notes"].lower(), ep
+        # And none of them may borrow the credibility of a measured error bar.
+        assert out[ep]["uncertainty"]["basis"] != UncertaintyBasis.MEASURED_BENCHMARK.value, ep
+
+
+def test_herg_refuses_to_present_itself_as_a_safety_assessment():
+    herg = RDKitQSPRADMET().predict(ASPIRIN, ["herg"])["herg"]
+    assert "not a cardiac safety assessment" in herg["caveat"].lower()
 
 
 def test_esol_solubility_is_in_a_sane_range():
     # Aspirin's experimental logS ≈ -1.7..-2.1; ESOL should land in a believable window.
     sol = RDKitQSPRADMET().predict(ASPIRIN, ["solubility"])["solubility"]
-    assert sol["method"].startswith("ESOL")
+    assert sol["provenance"]["model"] == "ESOL"
     assert -5.0 < sol["value"] < 1.0
     assert sol["mg_per_ml"] > 0
+    # The band must actually bracket the point estimate.
+    lo, hi = sol["uncertainty"]["interval"]
+    assert lo < sol["value"] < hi
+
+
+def test_out_of_domain_predictions_carry_a_caveat_in_the_payload():
+    """A number outside the model's domain must say so where a caller will see it.
+
+    Sucrose octaacetate is far outside ESOL's drug-like fitting region (MW ~679, and
+    very flexible). The prediction is still returned — refusing would hide that the
+    model has an opinion — but it must not be returned as if it were trustworthy.
+    """
+    big = "CC(=O)OCC1OC(OC2(COC(C)=O)OC(COC(C)=O)C(OC(C)=O)C2OC(C)=O)C(OC(C)=O)C(OC(C)=O)C1OC(C)=O"
+    sol = RDKitQSPRADMET().predict(big, ["solubility"])["solubility"]
+    assert sol["applicability_domain"]["verdict"] in {"borderline", "out"}
+    if sol["applicability_domain"]["verdict"] == "out":
+        assert "not for decision-making" in sol["caveat"]
 
 
 def test_bbb_rule_flags_a_large_polar_molecule_as_non_penetrant():
@@ -55,7 +122,10 @@ def test_bbb_rule_flags_a_large_polar_molecule_as_non_penetrant():
     glucose = "OC[C@@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O"
     bbb = RDKitQSPRADMET().predict(glucose, ["bbb"])["bbb"]
     assert bbb["value"] is False
-    assert 0.0 <= bbb["probability"] <= 1.0
+    assert 0.0 <= bbb["uncertainty"]["probability"] <= 1.0
+    # It must not silently imply it models efflux, which is the usual reason a
+    # rule-passing compound still fails in vivo.
+    assert "efflux" in bbb["caveat"].lower()
 
 
 def test_unsupported_endpoint_is_reported_not_invented():
@@ -160,7 +230,6 @@ def test_configure_backends_wires_vina_from_settings():
     # wiring that turns that env into a live VinaDockingBackend on the dock tool seam.
     from types import SimpleNamespace
 
-    from services.chemistry.adapters import docking
     from services.chemistry.adapters.vina import VinaDockingBackend
     from services.chemistry.adapters.wiring import configure_backends
 

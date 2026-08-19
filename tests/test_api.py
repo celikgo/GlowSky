@@ -46,7 +46,6 @@ def test_assess_endpoint_bundles_the_expert_layer():
 def test_login_proxies_to_carbon_auth(monkeypatch):
     """POST /auth/login forwards credentials to carbon-auth and relays the token, flagging
     whether it's already tenant-scoped. carbon-auth is mocked — Glowsky never stores the password."""
-    import httpx as _httpx
 
     import apps.api.main as main_mod
     from tests.conftest import make_token

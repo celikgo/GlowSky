@@ -182,7 +182,9 @@ class ToolCallingAgent:
         except ToolExecutionError as exc:
             return (AgentToolCall(step=step, tool=call.name, arguments=call.arguments,
                                   ok=False, summary=str(exc), error=str(exc)), None)
-        except Exception as exc:  # a bad-arg call must not kill the loop
+        except Exception as exc:  # noqa: BLE001 - the arguments come from the model, so the
+            # failure can originate anywhere in a tool's implementation. A bad call must be
+            # reported back into the loop as a failed step, never abort the whole run.
             return (AgentToolCall(step=step, tool=call.name, arguments=call.arguments,
                                   ok=False, summary=f"{call.name} failed: {exc}",
                                   error=str(exc)), None)

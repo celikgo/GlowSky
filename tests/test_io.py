@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from services.chemistry import io as chem_io
 
-
 # --- parsing (every structure passes the firewall) ----------------------------
 
 

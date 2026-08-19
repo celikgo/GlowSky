@@ -130,7 +130,9 @@ async def run_chat_turn(
     # right tool (the model selects it), not just the four the design pipeline hard-codes. With no
     # tool needed it degrades to a plain conversational reply (offline mock stays deterministic).
     agent = ToolCallingAgent(gateway, executor)
-    result = await agent.run(
+    # A distinct name from the design branch's `result`: that one is a DesignRunResult,
+    # this one an AgentResult, and they share no attributes.
+    agent_result = await agent.run(
         user,
         ctx,
         seed_smiles=seed or None,
@@ -141,8 +143,8 @@ async def run_chat_turn(
     )
     return ChatTurnResult(
         kind="chat",
-        text=result.text,
+        text=agent_result.text,
         seed=seed or None,
         design=None,
-        tools=[c.as_dict() for c in result.trace] or None,
+        tools=[c.as_dict() for c in agent_result.trace] or None,
     )

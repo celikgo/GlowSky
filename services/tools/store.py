@@ -88,9 +88,13 @@ class RedisJobStore:
         self._r.hset(self._k(job_id), "error", error)
 
     def get(self, job_id: str) -> dict | None:
-        data = self._r.hgetall(self._k(job_id))
-        if not data:
+        raw = self._r.hgetall(self._k(job_id))
+        if not raw:
             return None
+        # A fresh dict rather than mutating redis-py's return value: hgetall is typed
+        # as a mapping of bytes|str, and the decoded job carries a parsed result object
+        # and an event list, which is a different shape entirely.
+        data: dict = dict(raw)
         if data.get("result"):
             data["result"] = json.loads(data["result"])
         data["events"] = self.events(job_id)
@@ -106,7 +110,9 @@ _store: JobStore | None = None
 
 def get_store() -> JobStore:
     """Process-wide singleton, chosen by config. API and (eager) tasks share it."""
-    global _store
+    global _store  # noqa: PLW0603 - lazily-built process-wide singleton; the store must be
+    # shared between the API request path and the eager in-process task path or a job
+    # submitted by one would be invisible to the other.
     if _store is None:
         settings = get_settings()
         _store = RedisJobStore(settings.redis_url) if settings.redis_url else InMemoryJobStore()
@@ -114,4 +120,4 @@ def get_store() -> JobStore:
 
 
 def is_terminal(job: dict | None) -> bool:
-    return bool(job) and job["status"] in {s.value for s in TERMINAL}
+    return job is not None and job["status"] in {s.value for s in TERMINAL}

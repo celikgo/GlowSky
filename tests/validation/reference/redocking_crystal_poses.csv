@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Re-docking benchmark — crystallographic ligand poses.
+#
+# WHAT THIS IS
+#   Experimentally determined binding modes. Each row names a Protein Data Bank
+#   entry, the ligand co-crystallised in it, and the search box. The REFERENCE VALUE
+#   is not a number in this file: it is the ligand's crystallographic coordinates,
+#   which ship alongside as examples/docking/<pdb_id>_ligand.pdb. The test re-docks
+#   the ligand from its SMILES — discarding the experimental geometry entirely — and
+#   measures how far the top-scored pose lands from where crystallography found it.
+#
+#   This is the standard self-docking (re-docking) assessment, and it is the one
+#   docking benchmark whose reference answer is an observation rather than another
+#   program's output.
+#
+# SUCCESS CRITERION
+#   Heavy-atom RMSD <= 2.0 A between the top-scored pose and the crystal pose,
+#   computed WITHOUT superposition. 2.0 A is the long-standing convention in the
+#   docking literature and the criterion used in AutoDock Vina's own evaluation:
+#
+#     Trott, O. & Olson, A. J. "AutoDock Vina: Improving the speed and accuracy of
+#     docking with a new scoring function, efficient optimization, and
+#     multithreading." J. Comput. Chem. 31(2), 455-461 (2010).
+#     DOI: 10.1002/jcc.21334   https://doi.org/10.1002/jcc.21334
+#
+#   "Without superposition" is load-bearing. RDKit's GetBestRMS aligns the two
+#   molecules before measuring, which reports ~0 A for a pose translated bodily out
+#   of the binding site; it would make this benchmark pass unconditionally. The test
+#   uses CalcRMS, which measures in place, and asserts that distinction directly.
+#
+# STRUCTURE SOURCE
+#   RCSB Protein Data Bank entry 1HSG.
+#     "Crystal structure at 1.9-A resolution of human immunodeficiency virus (HIV) II
+#     protease complexed with L-735,524, an orally bioavailable inhibitor of the HIV
+#     proteases." Chen, Z. et al., J. Biol. Chem. 269, 26344 (1994).
+#     PDB DOI: 10.2210/pdb1hsg/pdb   https://doi.org/10.2210/pdb1hsg/pdb
+#     Entry page: https://www.rcsb.org/structure/1HSG
+#     Method: X-RAY DIFFRACTION. Resolution reported by RCSB: 2.0 A.
+#     (The entry's own title says 1.9 A; the value above is the one RCSB publishes in
+#     its structured resolution field. Both are recorded rather than picking one.)
+#
+# RIGHTS
+#   wwPDB coordinate data is distributed without restriction (CC0 1.0 Universal).
+#   Unlike a journal's supplementary table, this is freely redistributable, which is
+#   why the coordinates themselves ship in this repository rather than a fetch script.
+#
+# LIGAND IDENTITY — derived from the deposited coordinates, not recalled
+#   The `ligand_smiles` column is indinavir (L-735,524), C36H47N5O4, 45 heavy atoms.
+#   It was not written from a reference work. It was DERIVED from the deposited
+#   structure, by this procedure:
+#
+#     1. Read examples/docking/1hsg_ligand.pdb with RDKit (a PDB file carries atoms
+#        and coordinates but no bond orders).
+#     2. Apply bond orders from a FLAT template — connectivity and bond orders only,
+#        no stereochemistry — via AssignBondOrdersFromTemplate, which raises unless
+#        the template and the deposited heavy-atom graph are identical.
+#     3. Call AssignStereochemistryFrom3D, so every stereocentre is read off the
+#        experimental coordinates rather than asserted.
+#
+#   That procedure yields five stereocentres: (2S, 14S, 17R, 28S, 29R) in canonical
+#   RDKit atom order. This matters and is not pedantry — an earlier draft of this file
+#   carried a hand-written SMILES with two of those five inverted, which is a different
+#   diastereomer. Re-docking it would have produced a confident, meaningless RMSD
+#   against a molecule that is not the one in the crystal. The test in
+#   test_redocking_rmsd.py re-runs the identity check on every run for that reason.
+#
+#   NOTE: the deposited ligand is modelled without hydrogens, so the stereochemistry
+#   above is that of the heavy-atom skeleton as deposited.
+#
+#   NOTE: this is NOT the SMILES used in the docker-compose.docking.yml example,
+#   which is a 24-heavy-atom fragment. Re-docking requires the actual co-crystallised
+#   ligand.
+#
+# SEARCH BOX
+#   Centred on the crystal ligand's centroid (13.07, 22.47, 5.56), rounded to the
+#   values already used in docker-compose.docking.yml, with a 22 A cube — comfortably
+#   larger than the ligand's 14.9 x 10.2 x 8.6 A extent, so the pose is found rather
+#   than forced. A box tight around the answer is how a re-docking benchmark is
+#   accidentally rigged; this one is not.
+#
+# USED BY
+#   tests/validation/test_redocking_rmsd.py, gated by .github/workflows/validation.yml
+#   (which installs AutoDock Vina and OpenBabel, and FAILS if the test skips).
+#
+pdb_id,ligand_resname,ligand_smiles,center_x,center_y,center_z,size_x,size_y,size_z,max_rmsd_angstrom
+1HSG,MK1,CC(C)(C)NC(=O)[C@@H]1CN(Cc2cccnc2)CCN1C[C@@H](O)C[C@@H](Cc1ccccc1)C(=O)N[C@H]1c2ccccc2C[C@H]1O,13.1,22.5,5.6,22.0,22.0,22.0,2.0

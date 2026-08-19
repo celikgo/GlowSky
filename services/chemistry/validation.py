@@ -27,6 +27,35 @@ class ValidationResult:
     inchikey: str | None = None
     error: str | None = None
 
+    @property
+    def smiles(self) -> str:
+        """The canonical SMILES of a VALID result.
+
+        ``canonical_smiles`` is Optional because an invalid result genuinely has none.
+        That leaves every caller who has already checked ``valid`` with two options:
+        re-check for None, or pass an Optional into code that requires a string. The
+        codebase was doing the second, which is exactly how a ``None`` reaches RDKit
+        wearing a molecule's clothes. This accessor states the invariant — valid
+        implies present — and enforces it, so the impossible case fails here and says
+        so, instead of becoming an obscure error several frames away.
+        """
+        if self.canonical_smiles is None:
+            raise ValueError(
+                f"no canonical SMILES: validation of {self.input!r} did not succeed "
+                f"({self.error or 'unknown error'})"
+            )
+        return self.canonical_smiles
+
+    @property
+    def key(self) -> str:
+        """The InChIKey of a VALID result. Same invariant as :attr:`smiles`."""
+        if self.inchikey is None:
+            raise ValueError(
+                f"no InChIKey: validation of {self.input!r} did not succeed "
+                f"({self.error or 'unknown error'})"
+            )
+        return self.inchikey
+
     def as_dict(self) -> dict:
         return {
             "input": self.input,
@@ -63,7 +92,9 @@ def validate_and_canonicalize(smiles: str, *, standardize: bool = True) -> Valid
             mol = _standardize(mol)
         canonical = Chem.MolToSmiles(mol)
         inchikey = Chem.MolToInchiKey(mol)
-    except Exception as exc:  # RDKit can raise on edge-case structures
+    except Exception as exc:  # noqa: BLE001 - this IS the validation firewall: it takes
+        # arbitrary user/model-supplied text, so every RDKit failure mode must resolve to an
+        # invalid ValidationResult rather than propagate.
         return ValidationResult(input=smiles, valid=False, error=f"sanitization failed: {exc}")
 
     if not canonical:

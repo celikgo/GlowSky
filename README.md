@@ -1,10 +1,21 @@
 # Glowsky
 
+[![ci](https://github.com/celikgo/GlowSky/actions/workflows/ci.yml/badge.svg)](https://github.com/celikgo/GlowSky/actions/workflows/ci.yml)
+[![validation](https://github.com/celikgo/GlowSky/actions/workflows/validation.yml/badge.svg)](https://github.com/celikgo/GlowSky/actions/workflows/validation.yml)
+[![docker](https://github.com/celikgo/GlowSky/actions/workflows/docker.yml/badge.svg)](https://github.com/celikgo/GlowSky/actions/workflows/docker.yml)
+[![migrations](https://github.com/celikgo/GlowSky/actions/workflows/migrations.yml/badge.svg)](https://github.com/celikgo/GlowSky/actions/workflows/migrations.yml)
+[![security](https://github.com/celikgo/GlowSky/actions/workflows/security.yml/badge.svg)](https://github.com/celikgo/GlowSky/actions/workflows/security.yml)
+[![docs-links](https://github.com/celikgo/GlowSky/actions/workflows/docs-links.yml/badge.svg)](https://github.com/celikgo/GlowSky/actions/workflows/docs-links.yml)
+
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-pytest%20%2B%20vitest-brightgreen.svg)](tests/)
 [![Status: Early access](https://img.shields.io/badge/status-early%20access-blue.svg)](docs/09-roadmap.md)
-[![Code style: RDKit](https://img.shields.io/badge/chemistry-RDKit-26a69a.svg)](https://www.rdkit.org/)
+[![Chemistry: RDKit](https://img.shields.io/badge/chemistry-RDKit-26a69a.svg)](https://www.rdkit.org/)
+
+> The `validation` badge is the one worth clicking. It runs the benchmarks in
+> [`docs/VALIDATION.md`](docs/VALIDATION.md) against published reference values —
+> 1128 measured aqueous solubilities, and a ligand pose determined by X-ray
+> crystallography — and it reports what fails as well as what passes.
 
 **The AI-native workspace for small-molecule drug design — "Cursor for Chemists."**
 
@@ -16,6 +27,42 @@ Glowsky is an AI-first environment where medicinal chemists and computational dr
 
 ## The core idea
 Express your design *intent* in natural language; a chemistry-aware agent **plans** and orchestrates **validated tools** to execute it. LLMs reason and explain; deterministic chemistry (RDKit, predictors, docking) computes. The molecule is a first-class, visualizable, provenance-carrying object — never a hallucinated string (molecule *versioning* is still planned, `docs/03-feature-spec.md` B5). Use your own LLM keys (Anthropic Claude, OpenAI, Groq, or any OpenAI-compatible local endpoint such as Ollama/vLLM), routed per task class (reasoning / fast triage / codegen).
+
+---
+
+## What Glowsky is not
+
+The core idea above has a second half that matters just as much, and it is the half a
+tool in this domain usually gets wrong. **A predicted number is not a measurement.**
+A predicted ADMET property or a docking score presented as a bare point estimate reads
+like data and is not. So every predictor here returns its value together with:
+
+- its **uncertainty** — an interval or a probability, never a lone number;
+- its **applicability domain** — whether this molecule is even the kind of molecule the
+  model was built for, with the individual checks visible;
+- its **provenance** — which model, which version, fitted on what, and a citation that
+  resolves. Every DOI in this repository is verified against Crossref on every push.
+
+Concretely, and regardless of how anything is displayed:
+
+- **A docking score is not a binding affinity.** It is a scoring-function value in
+  kcal/mol.
+- **A predicted hERG risk is not a cardiac safety assessment.** It is a structural flag
+  for follow-up.
+- **Passing a druglikeness rule battery predicts nothing.** Those rules describe where
+  past drugs sat; they are not causes of why those drugs worked, and every one of them
+  was published with exceptions.
+- **An SA score is not a route** and does not mean a compound can be made.
+- **None of this is a regulatory or safety assessment**, and nothing here is a substitute
+  for an assay.
+- **Most of it is not validated.** [`docs/VALIDATION.md`](docs/VALIDATION.md) is
+  generated from a benchmark run and lists every capability with no benchmark behind it,
+  plus what validating each would take. Seven of the eight ADMET endpoints are on that
+  list, and the docking benchmark is published as **currently failing** its success
+  criterion rather than having the criterion relaxed to fit.
+
+These are triage and prioritisation aids: things to help a chemist decide which compound
+to make next. That is a genuinely useful job, and it is the job they are built for.
 
 ---
 
@@ -36,6 +83,7 @@ Express your design *intent* in natural language; a chemistry-aware agent **plan
 | 11 | [Folder Structure & System Design](docs/11-folder-structure.md) | Monorepo layout, boundaries, runtime topology |
 | 12 | [Risks & Mitigations](docs/12-risks.md) | Key technical risks and how we address them |
 | 13 | [Chemistry Tools Subsystem Architecture](docs/13-chemistry-tools-architecture.md) | Scalable, reproducible, extensible tool layer — contract, execution, scaling, SDK, tool catalog |
+| — | [**Validation**](docs/VALIDATION.md) | **Generated** from a benchmark run: how the predictors compare against published reference values, and every capability that has no benchmark at all |
 
 ---
 
@@ -51,12 +99,13 @@ The runnable slice proves the two hardest integrations end-to-end: the **BYO-LLM
 > the env yourself: `python3 -m venv .venv313 && make install` (the Makefile's `PY`/`PIP`
 > default to `.venv313/bin/`, so the directory name matters, the interpreter name does not).
 > Day-to-day development and both app images (`infra/docker/api.Dockerfile`,
-> `infra/docker/docking.Dockerfile`) run 3.13; there is no CI, so 3.11/3.12 are supported by
-> declaration (`requires-python = ">=3.11,<3.14"`) but never exercised.
+> `infra/docker/docking.Dockerfile`) run 3.13. All three versions are exercised on every
+> pull request by the `ci` matrix, so `requires-python = ">=3.11,<3.14"` is a tested
+> claim rather than a declared one.
 
 ```bash
 make venv && make install     # create .venv313 + install (editable)
-make test                     # 209 tests: firewall, chemistry core (MMP/SAR, retrosynthesis, bioisosteres, med-chem rules + MPO), tools, slow-path + streaming, container runtime + THY logistics tools, gateway, agent + Composer chat loop, API, auth/tenancy + RBAC, migrations, ADMET/docking backends, library I/O, run export, BYO-LLM key management
+make test                     # 223 tests: firewall, chemistry core (MMP/SAR, retrosynthesis, bioisosteres, med-chem rules + MPO), tools, slow-path + streaming, container runtime + THY logistics tools, gateway, agent + Composer chat loop, API, auth/tenancy + RBAC, migrations, ADMET/docking backends, library I/O, run export, BYO-LLM key management
 make demo                     # run a sample design loop, print results + provenance
 make run                      # start the API at http://localhost:8000  (/docs for Swagger)
 ```
@@ -211,18 +260,33 @@ curl localhost:8000/health # -> backends.docking: "autodock-vina (vina)"
 
 The image is pinned to `linux/amd64` (Vina ships x86_64 binaries only, so it runs under
 emulation on Apple Silicon). `./examples/docking` mounts at `/receptors`. Prepare the
-bundled 1HSG receptor once, then dock indinavir into its pocket (center derived from the
-crystal ligand, `13.1, 22.5, 5.6`):
+bundled 1HSG receptor once, then dock the co-crystallised ligand back into its pocket
+(centre = the crystal ligand's centroid, `13.1, 22.5, 5.6`):
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.docking.yml run --rm api \
-  obabel /receptors/1hsg_receptor.pdb -O /receptors/1hsg_receptor.pdbqt -xr
+  obabel /receptors/1hsg_receptor.pdb -O /receptors/1hsg_receptor.pdbqt -xr -p 7.4
 curl -s localhost:8000/tools/dock -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{"args":{
-  "ligand_smiles":"CC(C)(C)NC(=O)C1CC2CCCCC2CN1Cc1cccnc1",
+  "ligand_smiles":"CC(C)(C)NC(=O)[C@@H]1CN(Cc2cccnc2)CCN1C[C@@H](O)C[C@@H](Cc1ccccc1)C(=O)N[C@H]1c2ccccc2C[C@H]1O",
   "receptor_ref":"/receptors/1hsg_receptor.pdbqt",
-  "center":[13.1,22.5,5.6],"size":[22,22,22]}}'   # -> real affinities + per-pose .pdbqt geometry
+  "center":[13.1,22.5,5.6],"size":[22,22,22]}}'   # -> Vina scores + per-pose .pdbqt geometry
 ```
+
+Three things about that command are worth stating, because each was wrong in an earlier
+version of this README:
+
+- **`-p 7.4` is required, not a refinement.** It adds hydrogens at physiological pH.
+  `1hsg_receptor.pdb` has none (1514 atoms, all C/N/O/S), and Vina assigns its
+  hydrogen-bond atom types from the protonation state. Without it, re-docking this
+  ligand puts the top pose 4.22 Å from the crystallographic answer — measured, in
+  [`tests/validation/test_redocking_rmsd.py`](tests/validation/test_redocking_rmsd.py).
+- **That SMILES is indinavir**, the ligand actually co-crystallised in 1HSG, with the
+  stereochemistry read off the deposited coordinates. The 24-heavy-atom string this
+  README used to show is a fragment of it, not the ligand.
+- **A Vina score is not a binding affinity.** It is a scoring-function value in
+  kcal/mol. Recovering a pose is evidence about *geometry*; nothing here measures how
+  strongly anything binds. See [`docs/VALIDATION.md`](docs/VALIDATION.md).
 
 ### What's implemented today
 
@@ -306,8 +370,12 @@ make migrate-history              # history + current revision
 > After changing any model in `services/core/models.py`, run `make migration m="..."`,
 > review the generated file under `migrations/versions/`, and commit it. The
 > `tests/test_migrations.py` drift guard fails if models and migrations diverge — run
-> `make test` before committing a model change. Note there is no CI in this repo yet (no CI
-> config of any kind is tracked), so every check is local.
+> `make test` before committing a model change. CI goes further than that guard can: the
+> `migrations` workflow runs `alembic upgrade head`, then `downgrade -1`, then back up,
+> and finally all the way down to `base` and up again — against **Postgres 16**, the
+> engine production runs. The local guard uses SQLite in batch mode, where an `ALTER` is
+> a table rewrite rather than a real `ALTER`, so a migration can pass locally and fail
+> in production. CI is also the only place `downgrade()` is ever executed.
 
 ---
 

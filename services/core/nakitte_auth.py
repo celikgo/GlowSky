@@ -72,7 +72,9 @@ def verify_nakitte_jwt(token: str) -> dict | None:
         if settings.nakitte_jwt_issuer:
             decode_kwargs["issuer"] = settings.nakitte_jwt_issuer
         return jwt.decode(token, signing_key.key, **decode_kwargs)
-    except Exception:
+    except Exception:  # noqa: BLE001 - fail closed. PyJWT raises a family of decode errors
+        # (signature, expiry, audience, issuer) and the JWKS client adds its own; every one
+        # of them means "not authenticated", and none may leak a reason to the caller.
         return None
 
 

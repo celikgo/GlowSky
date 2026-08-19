@@ -6,9 +6,9 @@ ALTER operations work on SQLite (dev) as well as Postgres (production).
 """
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from alembic import context
 from services.core.config import get_settings
 from services.core.models import Base
 

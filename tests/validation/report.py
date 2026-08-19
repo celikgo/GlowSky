@@ -17,6 +17,7 @@ this project's own intentions.
 """
 from __future__ import annotations
 
+import argparse
 import json
 
 from tests.validation._harness import RESULTS_PATH, ROOT
@@ -35,7 +36,12 @@ CAPABILITY_INVENTORY: dict[str, str] = {
         "validated against Delaney's measured solubilities"
     ),
     "Docking — re-docking a crystallographic pose": (
-        "validated by re-docking into PDB 1HSG"
+        "MEASURED AND FAILING, not merely unmeasured. Re-docking into PDB 1HSG recovers "
+        "the crystal pose during sampling (0.85 A) but the scoring function ranks a "
+        "4.73 A pose first, above the 2.0 A criterion — so the pose a user actually gets "
+        "is the wrong binding mode. Improving it most likely means better receptor "
+        "preparation (a dedicated tool rather than OpenBabel, and retaining the conserved "
+        "flap water) rather than a different engine"
     ),
     "ADMET — logD7.4": (
         "would need a measured logD set (e.g. a public lipophilicity benchmark). "
@@ -113,7 +119,10 @@ def _fmt_metric(name: str, value: float, gate: str | None) -> str:
 
 
 def render(results: list[dict]) -> str:
-    validated = {r["capability"] for r in results}
+    # PASSING results only. A benchmark that ran and failed does not make its
+    # capability validated, and excluding it from the Unvalidated table on the strength
+    # of having been measured would be precisely the wrong reading.
+    validated = {r["capability"] for r in results if r["passed"]}
 
     env_bits = set()
     for r in results:
@@ -146,8 +155,26 @@ def render(results: list[dict]) -> str:
     if env_bits:
         lines += ["", f"_Environment: {', '.join(sorted(env_bits))}._"]
 
+    failed = [r for r in results if not r["passed"]]
+    if failed:
+        lines += [
+            "",
+            "---",
+            "",
+            "## Not currently meeting its criterion",
+            "",
+            "Stated here, at the top, rather than left to be discovered further down. These",
+            "benchmarks run and are measured; they do not meet the success criterion they are",
+            "judged against, and the criterion has not been moved to accommodate that.",
+            "",
+        ]
+        for r in sorted(failed, key=lambda x: x["capability"]):
+            metrics = ", ".join(f"{k} = {v}" for k, v in r["metrics"].items())
+            lines += [f"- **{r['capability']}** — {metrics}. See below for what this means."]
+        lines += [""]
+
     # --- validated ------------------------------------------------------------
-    lines += ["", "---", "", "## Validated against published reference values", ""]
+    lines += ["", "---", "", "## Benchmark results", ""]
     if not results:
         lines += [
             "> **No validation results were recorded in this run.**",
@@ -157,7 +184,11 @@ def render(results: list[dict]) -> str:
             "",
         ]
     for r in sorted(results, key=lambda x: x["capability"]):
-        status = "PASS" if r["passed"] else "**FAIL**"
+        status = (
+            "PASS — meets its stated criterion"
+            if r["passed"]
+            else "**FAIL — does not meet its stated criterion**"
+        )
         lines += [
             f"### {r['capability']}",
             "",
@@ -238,12 +269,108 @@ def render(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def main() -> None:
+def check(results: list[dict]) -> list[str]:
+    """Verify the committed document is consistent with this run. Returns problems.
+
+    Deliberately NOT a byte-for-byte diff against a freshly rendered document, and the
+    reason is specific: AutoDock Vina is multithreaded and is not bit-reproducible even
+    with a fixed seed, so the re-docking RMSD moves between runs on identical code
+    (4.22 A and 4.73 A were both measured while investigating one change). A byte diff
+    would therefore fail constantly for reasons that have nothing to do with the
+    document being wrong, and a gate that cries wolf gets switched off.
+
+    What is checked instead is everything that MATTERS about the document being honest:
+
+      - every capability measured in this run appears in the document;
+      - every capability's PASS/FAIL status in the document matches the run;
+      - a capability whose benchmark failed is not presented as validated;
+      - every capability in the inventory with no passing result is listed as
+        unvalidated.
+
+    A stale decimal place is a cosmetic problem. A capability described as validated
+    when its benchmark is failing is a false claim, and that is what this catches.
+    """
+    problems: list[str] = []
+    if not OUTPUT.exists():
+        return [f"{OUTPUT} does not exist; run `make validate`"]
+    doc = OUTPUT.read_text()
+
+    for r in results:
+        capability = r["capability"]
+        if capability not in doc:
+            problems.append(
+                f"measured capability {capability!r} is missing from {OUTPUT.name}"
+            )
+            continue
+        # Locate this capability's section and read the status line inside it.
+        section = doc.split(f"### {capability}", 1)
+        if len(section) < 2:
+            problems.append(f"{capability!r} has no section heading in {OUTPUT.name}")
+            continue
+        body = section[1].split("\n### ", 1)[0]
+        says_pass = "**Status:** PASS" in body
+        says_fail = "**Status:** **FAIL" in body
+        if r["passed"] and not says_pass:
+            problems.append(f"{capability!r} passed in this run but is not shown as PASS")
+        if not r["passed"]:
+            if not says_fail:
+                problems.append(
+                    f"{capability!r} FAILED its criterion in this run but "
+                    f"{OUTPUT.name} does not say so"
+                )
+            # The stronger check: a failing benchmark must also appear in the
+            # Unvalidated table. Being measured is not being validated.
+            unvalidated_table = doc.split("## Unvalidated", 1)
+            if len(unvalidated_table) < 2 or capability not in unvalidated_table[1]:
+                problems.append(
+                    f"{capability!r} failed its benchmark but is not listed under "
+                    f"'Unvalidated' — a measured failure is not a validation"
+                )
+
+    passing = {r["capability"] for r in results if r["passed"]}
+    unvalidated_section = doc.split("## Unvalidated", 1)
+    for capability in CAPABILITY_INVENTORY:
+        if capability in passing:
+            continue
+        if len(unvalidated_section) < 2 or capability not in unvalidated_section[1]:
+            problems.append(
+                f"{capability!r} has no passing benchmark but is absent from the "
+                f"Unvalidated table"
+            )
+    return problems
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Generate or check docs/VALIDATION.md")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="verify the committed document is consistent with the recorded results",
+    )
+    args = parser.parse_args()
+
     results = _load_results()
+
+    if args.check:
+        problems = check(results)
+        if problems:
+            print(f"{OUTPUT} is inconsistent with the validation run:")
+            for problem in problems:
+                print(f"  - {problem}")
+            print("\nRun `make validate` and commit the regenerated document.")
+            return 1
+        print(
+            f"{OUTPUT.name} is consistent with {len(results)} recorded result(s): "
+            f"every measured capability is present, every PASS/FAIL matches, and "
+            f"nothing without a passing benchmark is presented as validated"
+        )
+        return 0
+
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(render(results))
     print(f"wrote {OUTPUT} from {len(results)} recorded result(s)")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -113,16 +113,37 @@ jobs:
               raise SystemExit("no validation tests ran at all")
           PY
 
-      - name: docs/VALIDATION.md matches what the suite measured
+      # NOT a byte-for-byte diff against a freshly rendered document, deliberately.
+      # Vina is multithreaded and not bit-reproducible even with a fixed seed, so the
+      # re-docking RMSD moves between runs on identical code. A byte diff would fail
+      # constantly for reasons unrelated to the document being wrong, and a gate that
+      # cries wolf gets switched off. This checks the things that make the document
+      # honest instead: every measured capability present, every PASS/FAIL matching the
+      # run, and nothing without a passing benchmark presented as validated.
+      - name: docs/VALIDATION.md agrees with what the suite measured
+        run: python -m tests.validation.report --check
+
+      # Print the failing benchmarks explicitly. The suite is green when nothing has
+      # REGRESSED, which is not the same as everything meeting its criterion — and the
+      # difference must be visible in the run, not only in the document.
+      - name: report which benchmarks do not meet their criterion
+        if: always()
         run: |
-          python -m tests.validation.report
-          if ! git diff --exit-code -- docs/VALIDATION.md; then
-            echo "::error file=docs/VALIDATION.md::regenerating from this run produced a" \
-                 "different document. docs/VALIDATION.md is generated, not written:" \
-                 "run 'make validate' and commit the result."
-            exit 1
-          fi
-          echo "docs/VALIDATION.md is in sync with the measured results"
+          python - <<'PY'
+          import json, os, pathlib
+          path = pathlib.Path(os.environ["GLOWSKY_VALIDATION_RESULTS"])
+          if not path.exists():
+              raise SystemExit("no validation results recorded")
+          results = json.loads(path.read_text())
+          failing = [r for r in results if not r["passed"]]
+          for r in results:
+              mark = "PASS" if r["passed"] else "FAIL"
+              print(f"[{mark}] {r['capability']}: {r['metrics']}")
+          if failing:
+              names = ", ".join(r["capability"] for r in failing)
+              print(f"\n::warning::{len(failing)} benchmark(s) do not meet their "
+                    f"criterion and are published as failing in docs/VALIDATION.md: {names}")
+          PY
 
       - name: Upload the raw results
         if: always()

@@ -24,11 +24,11 @@ _Environment: python 3.13.2, rdkit 2026.03.5._
 
 ---
 
-## Validated against published reference values
+## Benchmark results
 
 ### ADMET — aqueous solubility (logS)
 
-- **Status:** PASS
+- **Status:** PASS — meets its stated criterion
 - **Model under test:** ESOL (Delaney 2004 coefficients), as implemented in services/chemistry/adapters/admet_rdkit.py
 - **Benchmark:** Delaney / ESOL compilation, 1128 measured aqueous solubilities (_n_ = 1128)
 - **Reference source:** Delaney, J. S., J. Chem. Inf. Comput. Sci. 44(3), 1000-1005 (2004); retrieved via MoleculeNet (Wu et al., Chem. Sci. 9, 513-530, 2018)
@@ -65,7 +65,7 @@ programmatically which of these it is looking at without consulting this page.
 | ADMET — metabolic stability | would need measured microsomal clearance, per species and matrix. The current output maps to no experimental unit |
 | ADMET — plasma protein binding | would need measured fraction-bound data, and a model that can resolve the 99%-99.9% region where the decisions actually are |
 | Docking — binding affinity from the Vina score | NOT VALIDATED AND NOT CLAIMED. A Vina score is not a binding affinity. Validating an affinity claim would need measured Kd/Ki for a congeneric series, and Glowsky does not present the score as an affinity anywhere |
-| Docking — re-docking a crystallographic pose | validated by re-docking into PDB 1HSG |
+| Docking — re-docking a crystallographic pose | MEASURED AND FAILING, not merely unmeasured. Re-docking into PDB 1HSG recovers the crystal pose during sampling (0.85 A) but the scoring function ranks a 4.73 A pose first, above the 2.0 A criterion — so the pose a user actually gets is the wrong binding mode. Improving it most likely means better receptor preparation (a dedicated tool rather than OpenBabel, and retaining the conserved flap water) rather than a different engine |
 | MPO desirability score | not a predictive model — a weighted desirability function over descriptors. There is no ground truth to validate it against; it encodes a preference, and the preference is the thing being expressed |
 | Med-chem rule battery (Lipinski, Veber, Ghose, Egan, Muegge, Ro3) | deterministic threshold rules reproducing published criteria. tests/test_medchem.py checks the thresholds against the published values; there is no accuracy to measure because the rules ARE the definition |
 | Retrosynthesis — template disconnections | would need a reaction-route benchmark with expert-validated routes. The current implementation is a small hand-written template set and finds only one-step disconnections it already knows |

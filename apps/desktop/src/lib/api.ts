@@ -306,7 +306,9 @@ export interface Disconnection {
 export interface Synthesizability {
   sa_score: number;
   sa_label: "easy" | "moderate" | "hard";
-  synthesizable: boolean;
+  // null when the molecule is outside the SA model's applicability domain: the score is
+  // still reported, but the easy/hard verdict is withheld rather than guessed.
+  synthesizable: boolean | null;
   n_disconnections: number;
   route_found: boolean;
   best_disconnection: Disconnection | null;

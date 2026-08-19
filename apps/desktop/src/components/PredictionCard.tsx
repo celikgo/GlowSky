@@ -96,6 +96,7 @@ const KIND_LABEL: Record<string, string> = {
   "published-rule": "published rule",
   "substructure-alert": "substructure alert",
   "physics-engine": "physics engine",
+  "published-heuristic": "published heuristic — ranks, does not measure",
   heuristic: "HEURISTIC — unvalidated",
   "deterministic-descriptor": "exact",
 };
@@ -114,8 +115,12 @@ function formatValue(p: Prediction): string {
  */
 function formatSpread(u: Uncertainty): string | null {
   if (u.interval) {
-    const level = Math.round((u.interval_level ?? 0.95) * 100);
-    return `${level}% CI [${u.interval[0]}, ${u.interval[1]}]`;
+    const level = u.interval_level ?? 0.95;
+    // level 1.0 is a full observed range (e.g. the min/max across docking poses), not a
+    // confidence interval. Rendering it as "100% CI" would claim total certainty —
+    // the exact inversion of what the field means.
+    if (level >= 1) return `range [${u.interval[0]}, ${u.interval[1]}]`;
+    return `${Math.round(level * 100)}% CI [${u.interval[0]}, ${u.interval[1]}]`;
   }
   if (typeof u.probability === "number") return `p = ${u.probability}`;
   if (typeof u.sigma === "number") return `σ = ${u.sigma}`;

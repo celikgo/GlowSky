@@ -111,7 +111,29 @@ jobs:
             glowsky-api:ci \
             alembic upgrade head
 
-      - name: the compose files reference only images that exist
+      # The compose files declare their secrets as ${GLOWSKY_SECRET_KEY:?...}, so an
+      # unconfigured `docker compose up` STOPS instead of starting an instance that
+      # would encrypt users' BYO-LLM keys under the public in-source dev key. That is
+      # the deployment-side half of GS-H1, and it is worth gating in both directions:
+      # first that it refuses, then that it resolves once configured.
+      - name: the stack refuses to start unconfigured
+        run: |
+          for f in docker-compose.yml docker-compose.prod.yml; do
+            if docker compose -f "$f" config >/dev/null 2>&1; then
+              echo "::error file=$f::resolved with no GLOWSKY_SECRET_KEY set;" \
+                   "the :? guard on the secret is missing or ineffective"
+              exit 1
+            fi
+            echo "ok: $f refuses to resolve without its secrets"
+          done
+
+      - name: every compose topology resolves once configured
+        env:
+          # Throwaway values for template interpolation only. Nothing is started
+          # here, and a real Fernet key is 44 urlsafe-base64 chars — this is the
+          # right SHAPE so the interpolation is exercised as it would be in anger.
+          GLOWSKY_SECRET_KEY: ci-placeholder-not-a-real-key-000000000000=
+          GLOWSKY_DB_PASSWORD: ci-placeholder
         run: |
           # `config` fully resolves each topology: a typo in a build context, a
           # dangling service reference or malformed YAML fails here rather than on

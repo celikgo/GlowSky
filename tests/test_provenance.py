@@ -102,7 +102,13 @@ def _prediction(domain: ApplicabilityDomain, caveat: str | None = None) -> Predi
             kind=ModelKind.PUBLISHED_QSPR,
             version="1",
             trained_on="data",
-            citations=(Citation(reference="r", doi="10.0/x", url="https://doi.org/10.0/x"),),
+            # A reserved-TLD placeholder (RFC 2606), not a doi.org URL. docs-links
+            # checks every URL in tests/ too, and correctly failed on the fake DOI
+            # this fixture used to carry — a citation that 404s is indistinguishable
+            # from one nobody checked, including in a test.
+            citations=(
+                Citation(reference="r", doi="10.0/x", url="https://citation.invalid/x"),
+            ),
         ),
         uncertainty=Uncertainty.from_sigma(
             1.0, 0.5, basis=UncertaintyBasis.MEASURED_BENCHMARK, source="s"

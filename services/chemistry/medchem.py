@@ -13,6 +13,31 @@ and the overall score is the **weighted arithmetic mean** of the per-property de
 (0–1). Arithmetic mean — not geometric — matches the published MPO standard: it's forgiving of a
 single boundary property rather than zeroing the whole molecule, while the reported *limiting
 property* still surfaces the weakest axis for the chemist to act on.
+
+Citations for the rule battery, all link-checked by .github/workflows/docs-links.yml:
+    Lipinski Ro5   https://doi.org/10.1016/S0169-409X(96)00423-1
+    Veber          https://doi.org/10.1021/jm020017n
+    Ghose          https://doi.org/10.1021/cc9800071
+    Egan           https://doi.org/10.1021/jm000292e
+    Muegge         https://doi.org/10.1021/jm015507e
+    Rule of 3      https://doi.org/10.1016/S1359-6446(03)02831-9
+    CNS MPO        https://doi.org/10.1021/cn100008c
+
+WHAT THIS IS NOT
+    - The MPO score is NOT a prediction and has no ground truth. It is a weighted
+      preference over descriptors: it says what THIS profile values, not what will
+      work. Two reasonable chemists would parameterise it differently and neither
+      would be wrong. There is nothing here to validate, and docs/VALIDATION.md says
+      so rather than leaving the absence of a benchmark to look like an oversight.
+    - The rules are not predictions of oral bioavailability. They are property ranges
+      derived from sets of compounds that had already succeeded — descriptions of
+      where past drugs sat, not causes of why they worked. Plenty of marketed drugs
+      violate Lipinski, and every one of these rules was published with exceptions.
+    - Passing the whole battery is not evidence of anything. A molecule can satisfy
+      all seven rule sets and be inactive, insoluble, toxic, or unmakeable: none of
+      these look at the target, and none of them look at the assay.
+    - A single aggregate score hides its own trade-offs, which is why `limiting` is
+      returned alongside it. Read that field.
 """
 from __future__ import annotations
 

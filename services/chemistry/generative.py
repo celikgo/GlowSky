@@ -8,6 +8,19 @@ chooses parameters (count, constraints); the chemistry is deterministic.
 
 Phase 1 swaps/augments this with scaffold hopping, bioisosteres, and an ML
 generative model (REINVENT-class) behind the same tool interface.
+
+WHAT THIS IS NOT
+    - Not a claim that any product is synthesizable, active, or novel. Enumeration
+      asks "what structures can I write", which is a different question from all three.
+      Score the outputs (sa_score, mpo_score, medchem_rules) before treating any of
+      them as a suggestion.
+    - Not exhaustive, and not a designed set. The substituent list is curated by hand;
+      what comes out reflects what is in that list and nothing about what would be
+      good here.
+    - The structures ARE guaranteed valid: every product is sanitized, canonicalized
+      and put through the validation firewall, and anything that fails is dropped. That
+      is the one guarantee this module makes, and it is a guarantee about chemistry
+      being well-formed, not about it being useful.
 """
 from __future__ import annotations
 

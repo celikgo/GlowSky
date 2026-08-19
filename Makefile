@@ -2,7 +2,8 @@ PY ?= .venv313/bin/python
 PIP ?= .venv313/bin/pip
 ALEMBIC ?= $(PY) -m alembic
 
-.PHONY: venv install test cov validate lint fix run demo clean migrate migration migrate-down \
+.PHONY: venv install test cov validate dois lint fix run demo clean migrate migration \
+        migrate-down \
         migrate-history desktop desktop-install desktop-build
 
 venv:                ## Create the Python 3.13 virtualenv (RDKit-compatible)
@@ -22,6 +23,9 @@ validate:            ## Run the validation suite and regenerate docs/VALIDATION.
 	rm -f validation-results.json
 	$(PY) -m pytest tests/validation/ -v
 	$(PY) -m tests.validation.report
+
+dois:                ## Verify every DOI cited in the tree is registered (needs network)
+	$(PY) -m scripts.check_dois
 
 lint:                ## ruff + mypy — the exact checks .github/workflows/ci.yml runs
 	$(PY) -m ruff check apps services tests scripts migrations

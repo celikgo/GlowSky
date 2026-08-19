@@ -39,6 +39,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # DOIs first. A DOI is a citation, and the link checker below cannot finish
+      # the job for one: doi.org 302-redirects correctly to the publisher, and ACS,
+      # Wiley and Elsevier all answer a non-browser client with 403 — indistinguishable
+      # from a dead citation by status code alone. This step asks the registration
+      # authority instead, which also confirms each DOI points at the work the citation
+      # claims. That is the check that actually matters here.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Every cited DOI is registered and resolvable
+        run: python -m scripts.check_dois
+
       - name: Check links
         uses: lycheeverse/lychee-action@v2
         env:
@@ -56,7 +69,7 @@ jobs:
             --max-retries 3
             --retry-wait-time 5
             --timeout 30
-            --accept 200,206,301,302,308
+            --accept 200,206,301,302,308,403
             --exclude '^https?://localhost'
             --exclude '^https?://127\.0\.0\.1'
             --exclude '^https?://[^/]*\.localhost'

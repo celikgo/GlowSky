@@ -12,6 +12,20 @@ named disconnections** as RDKit retro-reaction SMARTS, deterministically. Each d
 the forward reaction that would re-form the bond, and every precursor passes the validation
 firewall. The building-block call is an honest **heuristic** (small + easy-to-make), not a catalog
 lookup — labelled as such.
+
+WHAT THIS IS NOT
+    - Not a synthesis plan. It finds ONE-STEP disconnections drawn from a small,
+      hand-written template set. If a target's real route is not in that set, the
+      honest answer this returns is "no recognised disconnection" — which means this
+      module does not know one, not that none exists.
+    - Not a purchasability check. `all_building_blocks` is a size-and-simplicity
+      heuristic, NOT a catalogue lookup: nothing here has asked a supplier whether a
+      precursor can be bought, at what price, or in what quantity.
+    - Not feasibility. A named disconnection says the bond is one that chemistry knows
+      how to form in general, not that it will form on THIS substrate, in the presence
+      of these other groups, at a useful yield. Chemoselectivity, protecting groups and
+      stereocontrol are all outside what a retro-SMARTS can see.
+    - Not validated. There is no route benchmark behind this; see docs/VALIDATION.md.
 """
 from __future__ import annotations
 

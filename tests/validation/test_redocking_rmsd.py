@@ -166,6 +166,22 @@ def prepared_receptor(tmp_path_factory, case) -> pathlib.Path:
 
 
 @pytest.fixture(scope="module")
+def engine_name() -> str:
+    """The engine label. VinaDockingBackend exposes it; the raw dock() result does not.
+
+    Only services.chemistry.adapters.docking.dock() — the module-level tool handler —
+    merges {"engine": backend.name} into the payload. This test drives the backend
+    directly, so it reads the name from the backend.
+    """
+    import subprocess as _sp
+
+    version = _sp.run(
+        ["vina", "--version"], check=False, capture_output=True, text=True, timeout=60
+    ).stdout.strip().splitlines()
+    return version[0] if version else "autodock-vina"
+
+
+@pytest.fixture(scope="module")
 def redocked(case, prepared_receptor) -> dict:
     """Dock the ligand from SMILES alone and return the parsed result."""
     _require_tools()
@@ -184,7 +200,9 @@ def redocked(case, prepared_receptor) -> dict:
     return backend.dock(case["ligand_smiles"], str(prepared_receptor), pocket)
 
 
-def test_redocking_recovers_the_crystallographic_pose(case, crystal_pose, redocked, tmp_path):
+def test_redocking_recovers_the_crystallographic_pose(
+    case, crystal_pose, redocked, engine_name, tmp_path
+):
     """The headline gate: top-scored pose within 2.0 A of the experimental answer."""
     max_rmsd = float(case["max_rmsd_angstrom"])
 
@@ -207,10 +225,17 @@ def test_redocking_recovers_the_crystallographic_pose(case, crystal_pose, redock
     docked = AllChem.AssignBondOrdersFromTemplate(template, raw_pose)
 
     rmsd = rdMolAlign.CalcRMS(docked, crystal_pose)
+    # Printed so the measured value is in the CI log even when the assertion passes;
+    # a benchmark whose result is only visible on failure is hard to reason about.
+    print(
+        f"\n[re-docking] {case['pdb_id']}: RMSD to crystal pose = {rmsd:.3f} A "
+        f"(criterion <= {max_rmsd} A), top score {redocked['score']} kcal/mol, "
+        f"{len(redocked['poses'])} poses"
+    )
 
     ValidationResult(
         capability="Docking — re-docking a crystallographic pose",
-        model=f"AutoDock Vina via services/chemistry/adapters/vina.py ({redocked['engine']})",
+        model=f"AutoDock Vina via services/chemistry/adapters/vina.py ({engine_name})",
         benchmark=f"{case['pdb_id']} self-docking, heavy-atom RMSD to the deposited pose",
         source=_SOURCE,
         source_url=_SOURCE_URL,
@@ -230,7 +255,7 @@ def test_redocking_recovers_the_crystallographic_pose(case, crystal_pose, redock
             "completeness and is not a binding affinity. One structure bounds nothing about "
             "average performance."
         ),
-        environment={**environment(), "engine": str(redocked["engine"])},
+        environment={**environment(), "engine": engine_name},
     ).record()
 
     assert rmsd <= max_rmsd, (

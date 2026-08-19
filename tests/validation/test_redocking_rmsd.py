@@ -80,6 +80,30 @@ def _require_tools() -> None:
     pytest.skip(message)
 
 
+def _pose_to_mol(
+    pdbqt_text: str, template_smiles: str, workdir: pathlib.Path, stem: str
+) -> Chem.Mol:
+    """A docked pose's .pdbqt block -> an RDKit molecule with real bond orders.
+
+    PDBQT carries coordinates and Vina atom types but no bond orders, so the reference
+    SMILES supplies them. AssignBondOrdersFromTemplate raises unless the pose is the
+    same heavy-atom graph as the template, which also catches a pose that came back
+    truncated or garbled.
+    """
+    pdbqt = workdir / f"{stem}.pdbqt"
+    pdb = workdir / f"{stem}.pdb"
+    pdbqt.write_text(pdbqt_text)
+    subprocess.run(
+        ["obabel", str(pdbqt), "-O", str(pdb)],
+        check=True, capture_output=True, text=True, timeout=120,
+    )
+    raw = Chem.MolFromPDBFile(str(pdb), removeHs=True, sanitize=True)
+    if raw is None:
+        raise ValueError(f"could not read back the docked pose from {pdbqt}")
+    template = Chem.MolFromSmiles(template_smiles)
+    return AllChem.AssignBondOrdersFromTemplate(template, raw)
+
+
 @pytest.fixture(scope="module")
 def case() -> dict:
     rows = read_reference_csv("redocking_crystal_poses.csv")
@@ -156,9 +180,21 @@ def prepared_receptor(tmp_path_factory, case) -> pathlib.Path:
     src = DOCKING_EXAMPLES / f"{case['pdb_id'].lower()}_receptor.pdb"
     assert src.exists(), f"missing receptor: {src}"
     out = workdir / f"{case['pdb_id'].lower()}_receptor.pdbqt"
-    # -xr: rigid receptor (no torsions), which is what Vina expects for the protein.
+    # -xr  rigid receptor (no torsions), which is what Vina expects for the protein.
+    # -p 7.4  ADD HYDROGENS at physiological pH. This is not optional and leaving it
+    #   out is a real error, not a refinement: the deposited 1HSG coordinates contain
+    #   no hydrogens at all (1514 atoms, all C/N/O/S), and Vina's scoring function
+    #   assigns hydrogen-bond donor/acceptor atom types from the protonation state. An
+    #   unprotonated receptor gets the hydrogen-bonding term wrong throughout the site
+    #   — which for HIV-1 protease means the catalytic aspartate dyad and the flap
+    #   region, i.e. exactly the interactions that hold this ligand in place.
+    #
+    #   Measured, on this benchmark: preparing the receptor without -p 7.4 put the
+    #   top-scored pose 4.22 A from the crystal pose, a clear failure against the 2.0 A
+    #   criterion. The same defect is in the receptor-prep command documented in
+    #   docker-compose.docking.yml, which is fixed in the same commit as this line.
     subprocess.run(
-        ["obabel", str(src), "-O", str(out), "-xr"],
+        ["obabel", str(src), "-O", str(out), "-xr", "-p", "7.4"],
         check=True, capture_output=True, text=True, timeout=300,
     )
     assert out.exists() and out.stat().st_size > 0, "OpenBabel produced no receptor"
@@ -212,25 +248,35 @@ def test_redocking_recovers_the_crystallographic_pose(
 
     # PDBQT -> PDB -> RDKit, with the reference bond orders applied so the comparison
     # is between two representations of the same molecule.
-    pose_pdbqt = tmp_path / "best_pose.pdbqt"
-    pose_pdb = tmp_path / "best_pose.pdb"
-    pose_pdbqt.write_text(best_pdbqt)
-    subprocess.run(
-        ["obabel", str(pose_pdbqt), "-O", str(pose_pdb)],
-        check=True, capture_output=True, text=True, timeout=120,
-    )
-    raw_pose = Chem.MolFromPDBFile(str(pose_pdb), removeHs=True, sanitize=True)
-    assert raw_pose is not None, "could not read back the docked pose"
-    template = Chem.MolFromSmiles(case["ligand_smiles"])
-    docked = AllChem.AssignBondOrdersFromTemplate(template, raw_pose)
+    docked = _pose_to_mol(best_pdbqt, case["ligand_smiles"], tmp_path, "best_pose")
 
     rmsd = rdMolAlign.CalcRMS(docked, crystal_pose)
+
+    # Diagnostic only — the gate below stays on the TOP-SCORED pose, which is the pose
+    # a user would actually get. Measuring the best RMSD across all returned poses
+    # separates two very different failures that a single number cannot tell apart:
+    # sampling never generated the right pose (best_rmsd also high), versus sampling
+    # found it and scoring ranked something else first (best_rmsd low, top-pose high).
+    # Reporting only the best-of-N as if it were the result is a well-known way to make
+    # a docking benchmark look better than the software is, so it is labelled and it is
+    # not what is asserted.
+    best_rmsd = rmsd
+    for pose in redocked["poses"]:
+        if not pose.get("pdbqt"):
+            continue
+        try:
+            candidate = _pose_to_mol(pose["pdbqt"], case["ligand_smiles"], tmp_path,
+                                     f"pose_{pose['mode']}")
+        except (ValueError, subprocess.SubprocessError):
+            continue
+        best_rmsd = min(best_rmsd, rdMolAlign.CalcRMS(candidate, crystal_pose))
+
     # Printed so the measured value is in the CI log even when the assertion passes;
     # a benchmark whose result is only visible on failure is hard to reason about.
     print(
-        f"\n[re-docking] {case['pdb_id']}: RMSD to crystal pose = {rmsd:.3f} A "
-        f"(criterion <= {max_rmsd} A), top score {redocked['score']} kcal/mol, "
-        f"{len(redocked['poses'])} poses"
+        f"\n[re-docking] {case['pdb_id']}: top-scored pose RMSD = {rmsd:.3f} A "
+        f"(criterion <= {max_rmsd} A) | best of {len(redocked['poses'])} poses = "
+        f"{best_rmsd:.3f} A | top score {redocked['score']} kcal/mol"
     )
 
     ValidationResult(
@@ -242,10 +288,15 @@ def test_redocking_recovers_the_crystallographic_pose(
         n=1,
         metrics={
             "rmsd_angstrom": round(rmsd, 3),
+            "best_pose_rmsd_angstrom": round(best_rmsd, 3),
             "top_score_kcal_per_mol": round(float(redocked["score"]), 2),
             "n_poses": len(redocked["poses"]),
         },
-        gates={"rmsd_angstrom": f"<= {max_rmsd}"},
+        gates={
+            "rmsd_angstrom": f"<= {max_rmsd}",
+            # Diagnostic, deliberately ungated: see the comment at its computation.
+            "best_pose_rmsd_angstrom": "not gated (diagnostic)",
+        },
         passed=rmsd <= max_rmsd,
         notes=(
             "Self-docking: the receptor is already in the conformation this ligand induced, "

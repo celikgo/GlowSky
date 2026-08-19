@@ -211,18 +211,33 @@ curl localhost:8000/health # -> backends.docking: "autodock-vina (vina)"
 
 The image is pinned to `linux/amd64` (Vina ships x86_64 binaries only, so it runs under
 emulation on Apple Silicon). `./examples/docking` mounts at `/receptors`. Prepare the
-bundled 1HSG receptor once, then dock indinavir into its pocket (center derived from the
-crystal ligand, `13.1, 22.5, 5.6`):
+bundled 1HSG receptor once, then dock the co-crystallised ligand back into its pocket
+(centre = the crystal ligand's centroid, `13.1, 22.5, 5.6`):
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.docking.yml run --rm api \
-  obabel /receptors/1hsg_receptor.pdb -O /receptors/1hsg_receptor.pdbqt -xr
+  obabel /receptors/1hsg_receptor.pdb -O /receptors/1hsg_receptor.pdbqt -xr -p 7.4
 curl -s localhost:8000/tools/dock -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{"args":{
-  "ligand_smiles":"CC(C)(C)NC(=O)C1CC2CCCCC2CN1Cc1cccnc1",
+  "ligand_smiles":"CC(C)(C)NC(=O)[C@@H]1CN(Cc2cccnc2)CCN1C[C@@H](O)C[C@@H](Cc1ccccc1)C(=O)N[C@H]1c2ccccc2C[C@H]1O",
   "receptor_ref":"/receptors/1hsg_receptor.pdbqt",
-  "center":[13.1,22.5,5.6],"size":[22,22,22]}}'   # -> real affinities + per-pose .pdbqt geometry
+  "center":[13.1,22.5,5.6],"size":[22,22,22]}}'   # -> Vina scores + per-pose .pdbqt geometry
 ```
+
+Three things about that command are worth stating, because each was wrong in an earlier
+version of this README:
+
+- **`-p 7.4` is required, not a refinement.** It adds hydrogens at physiological pH.
+  `1hsg_receptor.pdb` has none (1514 atoms, all C/N/O/S), and Vina assigns its
+  hydrogen-bond atom types from the protonation state. Without it, re-docking this
+  ligand puts the top pose 4.22 Å from the crystallographic answer — measured, in
+  [`tests/validation/test_redocking_rmsd.py`](tests/validation/test_redocking_rmsd.py).
+- **That SMILES is indinavir**, the ligand actually co-crystallised in 1HSG, with the
+  stereochemistry read off the deposited coordinates. The 24-heavy-atom string this
+  README used to show is a fragment of it, not the ligand.
+- **A Vina score is not a binding affinity.** It is a scoring-function value in
+  kcal/mol. Recovering a pose is evidence about *geometry*; nothing here measures how
+  strongly anything binds. See [`docs/VALIDATION.md`](docs/VALIDATION.md).
 
 ### What's implemented today
 

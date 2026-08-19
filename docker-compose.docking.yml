@@ -9,7 +9,15 @@
 #
 # Prepare a receptor once, then dock against the bundled 1HSG sample:
 #   docker compose -f docker-compose.yml -f docker-compose.docking.yml run --rm api \
-#     obabel /receptors/1hsg_receptor.pdb -O /receptors/1hsg_receptor.pdbqt -xr
+#     obabel /receptors/1hsg_receptor.pdb -O /receptors/1hsg_receptor.pdbqt -xr -p 7.4
+#
+# `-p 7.4` adds hydrogens at physiological pH and it is NOT optional. Deposited PDB
+# coordinates usually carry no hydrogens (1hsg_receptor.pdb has none — 1514 atoms, all
+# C/N/O/S), and Vina assigns its hydrogen-bond donor/acceptor atom types from the
+# protonation state. Preparing this receptor without it measurably breaks docking:
+# tests/validation/test_redocking_rmsd.py re-docks the co-crystallised ligand and, with
+# `-xr` alone, the top-scored pose lands 4.22 A from the crystallographic answer —
+# a failure against the 2.0 A criterion, from one missing flag.
 #   curl -s localhost:8000/tools/dock -H 'content-type: application/json' -d '{"args":{
 #     "ligand_smiles":"CC(C)(C)NC(=O)C1CC2CCCCC2CN1Cc1cccnc1",
 #     "receptor_ref":"/receptors/1hsg_receptor.pdbqt",

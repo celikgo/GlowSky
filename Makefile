@@ -2,7 +2,8 @@ PY ?= .venv313/bin/python
 PIP ?= .venv313/bin/pip
 ALEMBIC ?= $(PY) -m alembic
 
-.PHONY: venv install test cov validate dois lint fix run demo clean migrate migration \
+.PHONY: venv install test cov validate dois social lint fix run demo clean migrate \
+        migration \
         migrate-down \
         migrate-history desktop desktop-install desktop-build
 
@@ -23,6 +24,9 @@ validate:            ## Run the validation suite and regenerate docs/VALIDATION.
 	rm -f validation-results.json
 	$(PY) -m pytest tests/validation/ -v
 	$(PY) -m tests.validation.report
+
+social:              ## Regenerate the social-preview image from live computed values
+	$(PY) -m scripts.make_social_preview
 
 dois:                ## Verify every DOI cited in the tree is registered (needs network)
 	$(PY) -m scripts.check_dois

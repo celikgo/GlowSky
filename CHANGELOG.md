@@ -110,5 +110,10 @@ tool silently means no network, and most predictive endpoints are unvalidated.
 
 Desktop bundles are **unsigned**.
 
-[Unreleased]: https://github.com/celikgo/GlowSky/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/celikgo/GlowSky/releases/tag/v0.1.0
+<!-- These point at pages that exist today. Once v0.1.0 is tagged they become
+     .../compare/v0.1.0...HEAD and .../releases/tag/v0.1.0 respectively — the
+     docs-links workflow checks every URL in this file on every push, so a link to a
+     release that has not been cut yet is a build failure, not a placeholder. -->
+
+[Unreleased]: https://github.com/celikgo/GlowSky/commits/main
+[0.1.0]: https://github.com/celikgo/GlowSky/releases

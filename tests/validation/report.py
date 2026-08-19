@@ -124,11 +124,6 @@ def render(results: list[dict]) -> str:
     # of having been measured would be precisely the wrong reading.
     validated = {r["capability"] for r in results if r["passed"]}
 
-    env_bits = set()
-    for r in results:
-        for k, v in (r.get("environment") or {}).items():
-            env_bits.add(f"{k} {v}")
-
     lines: list[str] = [
         "# Validation",
         "",
@@ -152,8 +147,6 @@ def render(results: list[dict]) -> str:
         "the measurements — a clock in the file would make every run differ from every",
         "other. Git already records when it changed.",
     ]
-    if env_bits:
-        lines += ["", f"_Environment: {', '.join(sorted(env_bits))}._"]
 
     failed = [r for r in results if not r["passed"]]
     if failed:
@@ -204,6 +197,13 @@ def render(results: list[dict]) -> str:
         gates = r.get("gates") or {}
         for name, value in r["metrics"].items():
             lines.append(_fmt_metric(name, value, gates.get(name)))
+        # Per benchmark, not once for the page. Benchmarks are not necessarily
+        # measured in the same environment — the docking case only runs where Vina
+        # is installed — and a union of their environments describes none of them.
+        env = r.get("environment") or {}
+        if env:
+            bits = ", ".join(f"{k} {v}" for k, v in sorted(env.items()))
+            lines += ["", f"_Measured with: {bits}._"]
         if r.get("notes"):
             lines += ["", f"> **What this does not show.** {r['notes']}"]
         lines.append("")

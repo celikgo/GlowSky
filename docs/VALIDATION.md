@@ -20,8 +20,6 @@ if the result differs from what is committed, so its content must depend only on
 the measurements — a clock in the file would make every run differ from every
 other. Git already records when it changed.
 
-_Environment: engine AutoDock Vina v1.2.5, python 3.13.15, python 3.13.2, rdkit 2026.03.5._
-
 ---
 
 ## Not currently meeting its criterion
@@ -53,6 +51,8 @@ judged against, and the criterion has not been moved to accommodate that.
 | `r_squared` | 0.7247 | `>= 0.7` |
 | `rmse_log_units` | 1.0994 | `<= 1.15` |
 
+_Measured with: python 3.13.2, rdkit 2026.03.5._
+
 > **What this does not show.** Reproduction of a published model on its own domain, NOT generalisation: the Delaney compilation includes the compounds ESOL was fitted on. An RMSE near one log unit is a factor of ten in concentration, which is why the predictor returns an interval rather than a point estimate. The measured RMSE here is the value used to build every solubility confidence interval Glowsky reports.
 
 ### Docking — re-docking a crystallographic pose
@@ -69,6 +69,8 @@ judged against, and the criterion has not been moved to accommodate that.
 | `n_poses` | 8 | — |
 | `rmsd_angstrom` | 4.725 | `<= 2.0` |
 | `top_score_kcal_per_mol` | -10.23 | — |
+
+_Measured with: engine AutoDock Vina v1.2.5, python 3.13.15, rdkit 2026.03.5._
 
 > **What this does not show.** Self-docking: the receptor is already in the conformation this ligand induced, which is the easiest case in structure-based modelling. It is evidence that the SMILES -> embed -> PDBQT -> Vina -> pose-parse pipeline is correct end to end, NOT evidence that Glowsky can place a novel ligand. The score is reported for completeness and is not a binding affinity. One structure bounds nothing about average performance.
 

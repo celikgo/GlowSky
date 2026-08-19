@@ -58,7 +58,13 @@ jobs:
           pip install -e ".[dev]"
 
       # OpenBabel converts the receptor and the docked poses between PDB and PDBQT.
+      #
+      # timeout-minutes on the step, not just the job: apt mirror contention on the
+      # hosted runners has taken this step past ten minutes on some runs, and without a
+      # step bound the job sits until the 45-minute job timeout before saying anything.
+      # Failing in six is faster to diagnose and cheaper to retry.
       - name: Install OpenBabel
+        timeout-minutes: 6
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends openbabel
@@ -68,6 +74,7 @@ jobs:
       # the same source that infra/docker/docking.Dockerfile pins, so the benchmark
       # measures the engine the shipped image actually runs.
       - name: Install AutoDock Vina
+        timeout-minutes: 5
         env:
           VINA_VERSION: 1.2.5
         run: |

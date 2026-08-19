@@ -33,10 +33,21 @@ at all. It now has seven:
 - `release` — this tag's own pipeline.
 
 **Uncertainty, applicability domain and provenance on every prediction.**
-`services/chemistry/provenance.py` defines the vocabulary and every predictor now
-returns a `Prediction` carrying all three. A solubility prediction is reported as
+`services/chemistry/provenance.py` defines the vocabulary and every predictor —
+the eight ADMET endpoints, synthetic accessibility, and docking — returns a
+`Prediction` carrying all three. A solubility prediction is reported as
 `-1.99 logS, 95% CI [-4.15, +0.16]` where that interval comes from an error measured in
 CI, not from a guess. 17 citations with DOIs verified against Crossref.
+
+Two of the applicability domains are read out of the models' own internals rather than
+asserted over them. SA score reports the fraction of a molecule's Morgan fragments that
+are missing from `sascorer`'s PubChem table — each such fragment silently scores the
+model's `-4` "unknown" default, so that fraction measures how much of the score is
+evidence (aspirin 0%, cisplatin 30%, which is refused). Docking reports the spread
+across the poses the run actually returned, labelled in the payload as the search
+disagreeing with itself and explicitly **not** as the scoring function's error against
+measured affinity — a quantity this repository has not measured and therefore does not
+quote. A single returned pose reports no spread rather than a spread of zero.
 
 **Validation against published reference values.** `tests/validation/`, gated in CI,
 with results published to a generated `docs/VALIDATION.md`:
@@ -82,6 +93,9 @@ covering the four places the version is declared.
 - **`pnpm-workspace.yaml`** carried pnpm's placeholder text (`esbuild: set this to true
   or false`) as a boolean, which would have ended every non-interactive CI install on
   `ERR_PNPM_IGNORED_BUILDS`.
+- **A full pose range was rendered as a "100% CI"** in the desktop's prediction card —
+  claiming total certainty about precisely the number whose purpose is to show that the
+  docking search disagreed with itself. It now renders as a range.
 - **A 3.12-only f-string** (backslash in an expression) that would have been a hard
   `SyntaxError` on the 3.11 matrix leg. Caught by ruff's `target-version = "py311"`.
 

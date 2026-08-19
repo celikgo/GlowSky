@@ -33,11 +33,13 @@ at all. It now has seven:
 - `release` — this tag's own pipeline.
 
 **Uncertainty, applicability domain and provenance on every prediction.**
-`services/chemistry/provenance.py` defines the vocabulary and every predictor —
-the eight ADMET endpoints, synthetic accessibility, and docking — returns a
-`Prediction` carrying all three. A solubility prediction is reported as
+`services/chemistry/provenance.py` defines the vocabulary and every predictor — the
+seven ADMET endpoints, synthetic accessibility, and docking — returns a `Prediction`
+carrying all three. A solubility prediction is reported as
 `-1.99 logS, 95% CI [-4.15, +0.16]` where that interval comes from an error measured in
-CI, not from a guess. 17 citations with DOIs verified against Crossref.
+CI, not from a guess. 18 cited DOIs, each verified at its registration authority —
+Crossref for the journal articles, wwPDB for the crystal structure — rather than by HTTP
+status, on every push.
 
 Two of the applicability domains are read out of the models' own internals rather than
 asserted over them. SA score reports the fraction of a molecule's Morgan fragments that
@@ -60,8 +62,8 @@ with results published to a generated `docs/VALIDATION.md`:
   having the criterion moved.
 
 `docs/VALIDATION.md` also lists every predictive capability with **no** benchmark
-behind it, and what validating each would require. Seven of the eight ADMET endpoints
-are on that list.
+behind it, and what validating each would require. Six of the backend's seven ADMET
+endpoints are on that list; only solubility has a benchmark behind it.
 
 **Project hygiene.** `SECURITY.md` (with the known limitations documented as known),
 `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, this changelog, and a version-consistency test

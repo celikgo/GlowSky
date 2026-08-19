@@ -88,8 +88,20 @@ reference. They are listed here rather than beside the validated ones because a
 uniform panel of numbers is precisely how an in-house heuristic ends up being read
 as a measurement. Each entry says what a real validation would require.
 
-Every one of these returns its `ModelKind` in the API payload, so a caller can tell
-programmatically which of these it is looking at without consulting this page.
+The predictors among these — the ADMET endpoints, synthetic accessibility and
+docking — return their `ModelKind`, uncertainty and applicability domain in the
+API payload, so a caller can tell programmatically what it is looking at without
+consulting this page. `PREDICTORS_RETURNING_MODEL_KIND` in tests/validation/
+report.py records that set and tests/test_prediction_contract.py checks it against
+the live tools, so this sentence fails a build rather than drifting.
+
+The remaining entries do not carry that payload, and the distinction is real rather
+than an omission: the rule battery, the structural-alert catalogues and the MPO
+desirability function are not predictions. They are definitions — a Lipinski
+violation is not an estimate of anything, and the MPO score encodes a stated
+preference with no ground truth to be uncertain about. Retrosynthesis returns
+disconnections rather than a number. Wrapping any of them in a prediction envelope
+would suggest an error bar where there is nothing to be wrong about.
 
 | capability | what validating it would take |
 |---|---|

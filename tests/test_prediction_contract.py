@@ -182,3 +182,62 @@ def test_dock_says_domain_unknown_rather_than_guessing_for_an_unparseable_ligand
     stub_backend([-9.1, -8.4])
     out = docking.dock("not-a-molecule", "receptor.pdbqt", [0, 0, 0], [20, 20, 20])
     assert out["applicability_domain"]["verdict"] == Domain.UNKNOWN.value
+
+
+# --- the claim docs/VALIDATION.md makes about this contract -------------------
+
+
+def test_the_documented_set_of_envelope_returning_predictors_is_the_real_one():
+    """docs/VALIDATION.md states which predictors return a ModelKind. Check it.
+
+    That sentence is the kind of claim that rots quietly: someone adds the envelope to
+    the MPO score, or removes it from docking, and a generated honesty document goes on
+    asserting the old shape. Driving it from a recorded set and checking that set against
+    the live tools here means the prose fails a build instead of drifting.
+    """
+    from services.chemistry.adapters.admet_rdkit import RDKitQSPRADMET
+    from tests.validation.report import (
+        CAPABILITY_INVENTORY,
+        PREDICTORS_RETURNING_MODEL_KIND,
+    )
+
+    assert PREDICTORS_RETURNING_MODEL_KIND.issubset(CAPABILITY_INVENTORY), (
+        "a capability is claimed to return a ModelKind but is not in the inventory at all"
+    )
+
+    # ADMET: every endpoint the backend advertises must carry the envelope.
+    backend = RDKitQSPRADMET()
+    admet = backend.predict(ASPIRIN, list(backend.endpoints))
+    for endpoint, payload in admet.items():
+        _assert_is_prediction_payload(payload, f"admet.{endpoint}")
+    admet_claimed = {c for c in PREDICTORS_RETURNING_MODEL_KIND if c.startswith("ADMET")}
+    assert len(admet_claimed) == len(backend.endpoints), (
+        f"the document claims {len(admet_claimed)} ADMET endpoints return the envelope, "
+        f"but the backend advertises {len(backend.endpoints)}: {sorted(backend.endpoints)}"
+    )
+
+    # The two this contract added.
+    assert "Synthetic accessibility (SA score)" in PREDICTORS_RETURNING_MODEL_KIND
+    assert "Docking — re-docking a crystallographic pose" in PREDICTORS_RETURNING_MODEL_KIND
+
+
+def test_the_tools_not_claiming_the_envelope_genuinely_do_not_return_one():
+    """The other half of the claim: the exclusions must be real, not stale.
+
+    If one of these grows a Prediction envelope, the document's explanation for why it
+    has none becomes false, and this fails until both are updated together.
+    """
+    from services.chemistry.medchem import medchem_rules, mpo_score
+    from services.chemistry.retrosynthesis import synthesizability
+
+    for name, payload in (
+        ("mpo_score", mpo_score(ASPIRIN)),
+        ("medchem_rules", medchem_rules(ASPIRIN)),
+        ("synthesizability", synthesizability(ASPIRIN)),
+    ):
+        missing = [key for key in _REQUIRED if key not in payload]
+        assert missing, (
+            f"{name} now returns a prediction envelope, but docs/VALIDATION.md still "
+            f"explains that it does not. Add it to PREDICTORS_RETURNING_MODEL_KIND in "
+            f"tests/validation/report.py and update the prose in the same change."
+        )

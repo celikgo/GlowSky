@@ -129,3 +129,63 @@ describe("PredictionPanel", () => {
     expect(isPrediction(publishedQspr)).toBe(true);
   });
 });
+
+/**
+ * A docking run reports the full range across the poses it found, tagged
+ * interval_level = 1.0. That is an observed spread, not a confidence interval: rendering
+ * it as "100% CI" would claim total certainty about a number whose whole point is that
+ * the search disagreed with itself.
+ */
+const dockingRange: Prediction = {
+  value: -9.1,
+  unit: "kcal/mol",
+  uncertainty: {
+    basis: "ensemble-spread",
+    sigma: 0.75,
+    interval: [-9.1, -7.6],
+    interval_level: 1.0,
+    source: "spread across the poses returned by this run, NOT the error of the scoring function",
+  },
+  applicability_domain: { verdict: "in", checks: {}, explanation: "in" },
+  provenance: {
+    model: "autodock-vina",
+    kind: "physics-engine",
+    version: "1.2.5",
+    trained_on: "empirical scoring function fitted to crystallographic complexes",
+    citations: [{ reference: "Trott & Olson 2010", doi: "10.1002/jcc.21334", url: "https://doi.org/10.1002/jcc.21334" }],
+  },
+  caveat: "docking score, not a binding affinity — a ranking quantity for this receptor",
+};
+
+describe("a full observed range is not a confidence interval", () => {
+  it("labels an interval_level of 1.0 as a range, never as a 100% CI", () => {
+    render(<PredictionCard label="dock" prediction={dockingRange} />);
+    expect(screen.getByText(/range \[-9\.1, -7\.6\]/)).toBeTruthy();
+    expect(screen.queryByText(/100% CI/)).toBeNull();
+  });
+
+  it("still renders a genuine 95% CI as a CI", () => {
+    render(<PredictionCard label="solubility" prediction={publishedQspr} />);
+    expect(screen.getByText(/95% CI/)).toBeTruthy();
+  });
+
+  it("shows a docking score with its 'not a binding affinity' caveat", () => {
+    render(<PredictionCard label="dock" prediction={dockingRange} />);
+    expect(screen.getByText(/not a binding affinity/)).toBeTruthy();
+  });
+});
+
+describe("a published heuristic is labelled as ranking, not measuring", () => {
+  it("names the published-heuristic kind rather than falling through to the raw string", () => {
+    const sa: Prediction = {
+      ...dockingRange,
+      value: 1.58,
+      unit: "SA score (1 easy – 10 hard)",
+      uncertainty: { basis: "stated-estimate", sigma: 1.0, source: "stated resolution" },
+      provenance: { ...dockingRange.provenance, kind: "published-heuristic", model: "Ertl & Schuffenhauer SA score" },
+      caveat: undefined,
+    };
+    render(<PredictionCard label="sa_score" prediction={sa} />);
+    expect(screen.getByText(/ranks, does not measure/)).toBeTruthy();
+  });
+});

@@ -58,6 +58,11 @@ class ModelKind(str, Enum):
     #: A physics-based search-and-score engine (docking). Reproducible given a seed;
     #: its score is not a free energy.
     PHYSICS_ENGINE = "physics-engine"
+    #: A published scoring scheme, deterministic given the structure, whose output is a
+    #: JUDGEMENT rather than a measurable quantity — synthetic accessibility, drug-likeness.
+    #: There is no assay that could confirm it, so it has no error bar in its own units;
+    #: what it can have is a stated resolution below which differences mean nothing.
+    PUBLISHED_HEURISTIC = "published-heuristic"
     #: An in-house correlation with no published validation behind THIS parameterisation.
     #: The weakest class, and the one that must be labelled loudest.
     HEURISTIC = "heuristic"

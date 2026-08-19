@@ -199,13 +199,14 @@ def _erfinv(p: float) -> float:
     a handful of iterations over the range of confidence levels anyone asks for, and keeps
     this module dependency-free (it is imported by every predictor).
     """
-    x = 0.0
-    target = p
-    # Bisection: erf is monotonic on [0, 4], which covers p up to 1 - 1e-8.
+    # Bisection: erf is strictly increasing on [0, 4], which covers p up to 1 - 1e-8.
+    # 80 halvings take the bracket well below double precision, so this is exact for
+    # any confidence level anyone asks for.
     lo, hi = 0.0, 4.0
+    x = 0.0
     for _ in range(80):
         x = 0.5 * (lo + hi)
-        if math.erf(x) < target:
+        if math.erf(x) < p:
             lo = x
         else:
             hi = x

@@ -1,0 +1,61 @@
+name: A predicted number looks wrong
+description: A predictor returned a value you believe is incorrect, or a caveat you think is missing
+labels: ["chemistry", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Read this first — it will save you time.** Most of Glowsky's predictors are
+        *not validated against anything*, and say so: `docs/VALIDATION.md` lists every
+        capability with no benchmark behind it. A hERG flag disagreeing with your assay
+        is expected behaviour, not a bug; the model is a two-term correlation and the
+        payload labels it `HEURISTIC`.
+
+        What IS a bug: a value outside the model's stated behaviour, a missing or wrong
+        applicability-domain verdict, an uncertainty band that contradicts the measured
+        error, a citation that does not support the claim, or a number presented without
+        the caveat its own module says it should carry.
+
+        **Do not paste an API key, and do not paste a structure you cannot publish.**
+        A SMILES in a public issue is public.
+  - type: input
+    id: smiles
+    attributes:
+      label: SMILES
+      description: The canonical SMILES you ran. Omit it if the structure is confidential — say so instead and describe the class.
+      placeholder: CC(=O)Oc1ccccc1C(=O)O
+    validations:
+      required: false
+  - type: input
+    id: tool
+    attributes:
+      label: Which tool or endpoint
+      placeholder: predict_admet / solubility, or sa_score, or dock
+    validations:
+      required: true
+  - type: textarea
+    id: payload
+    attributes:
+      label: The full payload it returned
+      description: >-
+        The whole object, not just the value — `uncertainty`, `applicability_domain` and
+        `provenance` are usually where the answer is. Rendered as code, no backticks needed.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and on what basis
+      description: >-
+        A measured value with a source is the most useful thing you can provide — it may
+        become a validation case. "Chemical intuition" is a legitimate answer; say so.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0, or the commit SHA
+    validations:
+      required: true

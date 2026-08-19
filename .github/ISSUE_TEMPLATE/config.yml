@@ -1,0 +1,15 @@
+# A security problem must not arrive as a public issue. Putting the private channel
+# first, and turning blank issues off, is the difference between a vulnerability being
+# reported quietly and it being published by somebody trying to be helpful.
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability — report privately, never as an issue
+    url: https://github.com/celikgo/GlowSky/security/advisories/new
+    about: >-
+      Glowsky stores other people's LLM API keys and unpublished structures. Read
+      SECURITY.md before you write anything public.
+  - name: "\"Is this number right?\" — read the validation page first"
+    url: https://github.com/celikgo/GlowSky/blob/main/docs/VALIDATION.md
+    about: >-
+      Most predictors here are not validated against anything, and that page says which.
+      A heuristic disagreeing with your assay is documented behaviour, not a bug.

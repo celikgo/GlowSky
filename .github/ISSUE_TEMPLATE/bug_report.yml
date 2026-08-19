@@ -1,0 +1,74 @@
+name: Bug report
+description: Something in the API, the desktop app, the agent loop or the tooling is broken
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a predicted number that looks wrong, use the other template instead — the
+        questions there are different.
+
+        **Never paste an LLM provider key, a token, a `GLOWSKY_SECRET_KEY`, or a
+        database URL with a password in it.** Redact before pasting. If you believe you
+        have already leaked one, rotate it at the provider now; SECURITY.md explains
+        what Glowsky does and does not store.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A `curl` against the API, or the clicks in the desktop app.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      options:
+        - FastAPI backend
+        - Desktop app (Tauri)
+        - Agent / design loop
+        - Chemistry tools
+        - Docker / deployment
+        - Migrations
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: stack
+    attributes:
+      label: How you are running it
+      options:
+        - docker-compose.release.yml (published image)
+        - docker-compose.prod.yml (built from source)
+        - docker-compose.yml (dev)
+        - Local Python, no containers
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or traceback
+      description: Redacted. Rendered as code, no backticks needed.
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0, or the commit SHA
+    validations:
+      required: true

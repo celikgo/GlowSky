@@ -19,7 +19,7 @@ is now checked, and that the numbers it produces say how much they can be truste
 at all. It now has seven:
 
 - `ci` — ruff, mypy, and pytest across Python 3.11/3.12/3.13 with coverage gated at 85%
-  (currently 90.67%), plus the desktop app's `tsc`, `vitest` and `eslint`. The matrix
+  (91.23% at this tag), plus the desktop app's `tsc`, `vitest` and `eslint`. The matrix
   is what makes `requires-python = ">=3.11,<3.14"` a tested claim.
 - `validation` — benchmarks against published reference values (below).
 - `docker` — builds every image in every compose topology, runs `alembic upgrade head`

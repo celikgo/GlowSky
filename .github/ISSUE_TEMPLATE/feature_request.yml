@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a capability, a tool, or a change in behaviour
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Glowsky provisions capability when it is needed rather than in advance, so the
+        most persuasive request describes the work you are blocked on, not the feature
+        you would like to exist.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do that you cannot do today
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+    validations:
+      required: false
+  - type: textarea
+    id: validation
+    attributes:
+      label: If this is a predictive model, what would validate it
+      description: >-
+        A published benchmark with reference values, ideally. Glowsky does not ship a
+        predictor it cannot either validate or list as unvalidated with a reason — see
+        docs/VALIDATION.md. "There is no public benchmark" is a real and useful answer.
+    validations:
+      required: false

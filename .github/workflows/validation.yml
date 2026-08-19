@@ -64,10 +64,25 @@ jobs:
       # step bound the job sits until the 45-minute job timeout before saying anything.
       # Failing in six is faster to diagnose and cheaper to retry.
       - name: Install OpenBabel
-        timeout-minutes: 6
+        timeout-minutes: 8
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openbabel
+          set -euo pipefail
+          # `apt-get update` first is the conventional incantation, and on these
+          # runners it is also the slow part: it refreshes every configured source,
+          # several of which are Azure mirrors that intermittently crawl. Measured on
+          # this workflow it has taken the step from ~40 seconds to over twenty
+          # minutes, repeatedly, with the actual openbabel download unaffected.
+          #
+          # The runner image ships a recent package index, so try the install against
+          # it first and only pay for a refresh if that misses. Both paths end at the
+          # same package; this just stops the common case waiting on the rare one.
+          if sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 openbabel; then
+            echo "installed from the runner's existing package index"
+          else
+            echo "index miss — refreshing and retrying"
+            sudo apt-get update -o Acquire::Retries=3
+            sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 openbabel
+          fi
           obabel -V
 
       # AutoDock Vina's official static x86_64 release binary — the same version and

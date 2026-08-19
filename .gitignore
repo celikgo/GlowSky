@@ -10,6 +10,11 @@ __pycache__/
 .env
 *.key
 
+# Coverage artifacts (CI uploads coverage.xml as a run artifact instead)
+.coverage
+coverage.xml
+htmlcov/
+
 # Local data
 *.db
 *.sqlite3

@@ -46,12 +46,14 @@ def _apply(rxns: dict, mol: Chem.Mol) -> list[tuple[str, str]]:
             product = products[0]
             try:
                 Chem.SanitizeMol(product)
-            except Exception:
-                continue  # firewall: drop anything that won't sanitize
+            except Exception:  # noqa: BLE001,S112 - see bioisosteres._apply: an unsanitizable
+                # reaction product is discarded by design, and RDKit's sanitization errors do
+                # not share a single catchable base class.
+                continue
             result = validate_and_canonicalize(Chem.MolToSmiles(product))
-            if result.valid and result.inchikey not in seen:
-                seen.add(result.inchikey)
-                out.append((label, result.canonical_smiles))
+            if result.valid and result.key not in seen:
+                seen.add(result.key)
+                out.append((label, result.smiles))
     return out
 
 

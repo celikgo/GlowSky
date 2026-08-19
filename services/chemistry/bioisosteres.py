@@ -48,12 +48,15 @@ def _apply(rxns: dict, mol: Chem.Mol, seen: set[str]) -> list[tuple[str, str]]:
         for products in rxn.RunReactants((mol,)):
             try:
                 Chem.SanitizeMol(products[0])
-            except Exception:
-                continue  # firewall: drop anything that won't sanitize
+            except Exception:  # noqa: BLE001,S112 - RDKit raises several unrelated C++-mapped
+                # sanitization exceptions (valence, kekulization, ...). A transform product
+                # that will not sanitize is not a molecule, and silently dropping it IS the
+                # firewall: there is nothing to log that the caller could act on.
+                continue
             result = validate_and_canonicalize(Chem.MolToSmiles(products[0]))
-            if result.valid and result.inchikey not in seen:
-                seen.add(result.inchikey)
-                out.append((label, result.canonical_smiles))
+            if result.valid and result.key not in seen:
+                seen.add(result.key)
+                out.append((label, result.smiles))
     return out
 
 
@@ -69,8 +72,8 @@ def bioisosteric_analogs(canonical_smiles: str, *, max_results: int = 20) -> lis
     if not parent.valid:
         raise ValueError(f"bioisosteric_analogs received invalid parent: {parent.error}")
 
-    mol = Chem.MolFromSmiles(parent.canonical_smiles)
-    seen = {parent.inchikey}
+    mol = Chem.MolFromSmiles(parent.smiles)
+    seen = {parent.key}
     products = _apply(_BIOISOSTERE_RXNS, mol, seen) + _apply(_SCAFFOLD_HOP_RXNS, mol, seen)
 
     analogs: list[dict] = []

@@ -49,12 +49,29 @@ Runner = Callable[[list[str], str, int], RunOutcome]
 
 def _subprocess_runner(argv: list[str], stdin_text: str, timeout_s: int) -> RunOutcome:
     try:
-        proc = subprocess.run(
-            argv, input=stdin_text, capture_output=True, text=True, timeout=timeout_s
+        proc = subprocess.run(  # noqa: S603 - argv list, shell=False, built by
+            # ContainerRuntime.build_command() from a validated ToolSpec, not from user text.
+            argv,
+            input=stdin_text,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            # A non-zero exit is a tool that failed, which this runtime reports through
+            # RunOutcome.returncode; raising here would lose the tool's stderr.
+            check=False,
         )
         return RunOutcome(proc.returncode, proc.stdout, proc.stderr)
     except subprocess.TimeoutExpired as exc:
-        return RunOutcome(124, exc.stdout or "", exc.stderr or "", timed_out=True)
+        # TimeoutExpired.stdout/stderr are typed bytes|str because they follow the
+        # call's `text` argument. We pass text=True so they are str, but a timed-out
+        # child can be killed mid-multibyte-sequence, so decode defensively rather
+        # than assert.
+        def _text(v: bytes | str | None) -> str:
+            if v is None:
+                return ""
+            return v.decode("utf-8", "replace") if isinstance(v, bytes) else v
+
+        return RunOutcome(124, _text(exc.stdout), _text(exc.stderr), timed_out=True)
 
 
 class ContainerRuntime:
@@ -79,7 +96,10 @@ class ContainerRuntime:
             "--pids-limit", "256",
             "--memory", f"{resources.mem_mb}m",
             "--cpus", str(resources.cpu),
-            "--tmpfs", "/tmp:rw,size=256m",
+            # Not a host path: this is the --tmpfs mount spec for a path INSIDE the
+            # sandbox. The container's root filesystem is --read-only, so a tool that
+            # needs scratch space gets this capped, in-memory /tmp and nothing else.
+            "--tmpfs", "/tmp:rw,size=256m",  # noqa: S108
         ]
         # Network policy — FAIL CLOSED. NONE => fully isolated. ALLOWLIST is meant to route
         # through a Phase-3 egress proxy that doesn't exist yet, so we must NOT fall through

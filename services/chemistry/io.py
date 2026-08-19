@@ -55,8 +55,8 @@ def _accept(raw: str, name: str | None, extra_props: dict | None = None) -> Pars
 def parse_smiles(content: str) -> list[ParsedMolecule]:
     """One molecule per line: '<smiles>' or '<smiles> <name>' (whitespace-separated)."""
     out: list[ParsedMolecule] = []
-    for line in content.splitlines():
-        line = line.strip()
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
         parts = line.split(None, 1)
@@ -109,7 +109,8 @@ def parse_sdf(content: str) -> list[ParsedMolecule]:
         props = {p: mol.GetProp(p) for p in mol.GetPropNames()}
         try:
             raw_smiles = Chem.MolToSmiles(mol)
-        except Exception as exc:  # pre-sanitization can leave odd valences
+        except Exception as exc:  # noqa: BLE001 - an uploaded SDF is untrusted input; every
+            # way a record can be malformed must become a per-row error, not a failed import.
             out.append(ParsedMolecule(valid=False, input=name or "<sdf record>",
                                       name=name, error=f"could not read structure: {exc}"))
             continue
@@ -202,8 +203,8 @@ def diff_molecules(smiles_a: str, smiles_b: str) -> dict:
     if not b.valid:
         raise ValueError(f"molecule B invalid: {b.error}")
 
-    da = compute_descriptors(a.canonical_smiles)
-    db = compute_descriptors(b.canonical_smiles)
+    da = compute_descriptors(a.smiles)
+    db = compute_descriptors(b.smiles)
     deltas = {k: round(db[k] - da[k], 3) for k in _DIFF_KEYS}
     return {
         "a": {"canonical_smiles": a.canonical_smiles, "inchikey": a.inchikey, "properties": da},

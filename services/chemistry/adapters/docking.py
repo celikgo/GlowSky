@@ -21,7 +21,8 @@ class Pocket:
 
 @runtime_checkable
 class DockingBackend(Protocol):
-    name: str
+    @property
+    def name(self) -> str: ...
 
     def dock(self, ligand_smiles: str, receptor_ref: str, pocket: Pocket) -> dict: ...
 
@@ -41,7 +42,8 @@ _backend: DockingBackend = NotConfiguredDocking()
 
 
 def set_backend(backend: DockingBackend) -> None:
-    global _backend
+    # See admet.set_backend: one process-wide engine, wired once at startup.
+    global _backend  # noqa: PLW0603
     _backend = backend
 
 

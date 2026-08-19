@@ -4,9 +4,9 @@ from __future__ import annotations
 from fastapi import Depends, Header, HTTPException
 
 from services.core.auth import Principal
-from services.core.nakitte_auth import resolve_nakitte_token
 from services.core.db import session_scope
 from services.core.models import AgentRun, Library, Project
+from services.core.nakitte_auth import resolve_nakitte_token
 
 
 def current_principal(authorization: str | None = Header(default=None)) -> Principal:

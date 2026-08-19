@@ -38,7 +38,9 @@ def run_tool_job(job_id: str, tool: str, args: dict, ctx_dict: dict, seed: int |
         store.set_result(job_id, payload)
         store.append_event(job_id, event(EventType.COMPLETED, result=payload))
         store.set_status(job_id, JobStatus.COMPLETED)
-    except Exception as exc:  # capture tool/backend errors into the job
+    except Exception as exc:  # noqa: BLE001 - a worker task must always terminate the job
+        # record. Any escaping exception would leave the job RUNNING forever from the
+        # client's point of view.
         store.set_error(job_id, str(exc))
         store.append_event(job_id, event(EventType.FAILED, error=str(exc)))
         store.set_status(job_id, JobStatus.FAILED)
@@ -66,7 +68,8 @@ def run_batch_job(job_id: str, tool: str, items: list[dict], ctx_dict: dict) -> 
             res = _executor.execute(tool, item_args, ctx)
             entry = {"index": i, "args": item_args, "output": res.output,
                      "cache_hit": res.record.cache_hit}
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - one bad item in a batch must not abort
+            # the remaining items; the failure is recorded per-index instead.
             failures += 1
             entry = {"index": i, "args": item_args, "error": str(exc)}
         results.append(entry)

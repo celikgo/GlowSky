@@ -36,7 +36,7 @@ async def main() -> None:
             f"  {c.modification:6} {c.smiles:26} {p['mw']:7} {p['logp']:6} "
             f"{p['qed']:5}  {'✓' if c.passed_filters else '·'}"
         )
-    print(f"\nExplanation:\n  " + result.explanation.replace("\n", "\n  "))
+    print("\nExplanation:\n  " + result.explanation.replace("\n", "\n  "))
 
 
 if __name__ == "__main__":

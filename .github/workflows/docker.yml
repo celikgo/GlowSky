@@ -1,0 +1,123 @@
+# Every image referenced by every compose topology must build.
+#
+# This job exists because the two most recent fixes in this repository were both
+# in this class:
+#
+#   441fe87 fix(ops): copy alembic.ini + migrations into the prod image so the
+#           migrate one-shot runs (GS-M1)
+#
+# A missing COPY is invisible to pytest, to ruff and to mypy. It is visible to
+# `docker build` and to nobody else, which is why it reached main.
+name: docker
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    name: build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    # The docking image fetches a Vina release binary and installs OpenBabel;
+    # the ADMET-AI tool image installs torch. Both are genuinely slow.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The application image. Used by docker-compose.yml (api, worker) and by
+          # docker-compose.prod.yml (api, worker, AND the migrate one-shot) — which
+          # is the service that 441fe87 was about.
+          - name: api
+            file: infra/docker/api.Dockerfile
+            context: .
+          # The opt-in docking image: api.Dockerfile plus AutoDock Vina + OpenBabel.
+          - name: docking
+            file: infra/docker/docking.Dockerfile
+            context: .
+          # Container tools. These are the sandboxed docker-out-of-docker tool
+          # images; a broken one is a tool that vanishes at runtime.
+          - name: tool-molecular-formula
+            file: examples/tools/molecular_formula/Dockerfile
+            context: examples/tools/molecular_formula
+          - name: tool-cargo-dimensioning
+            file: examples/tools/cargo_dimensioning/Dockerfile
+            context: examples/tools/cargo_dimensioning
+          - name: tool-damage-detect
+            file: examples/tools/damage_detect/Dockerfile
+            context: examples/tools/damage_detect
+          - name: tool-apron-energy
+            file: examples/tools/apron_energy/Dockerfile
+            context: examples/tools/apron_energy
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          # Never pushed from this workflow — release.yml owns publishing. This
+          # job answers one question: does it build?
+          push: false
+          load: true
+          tags: glowsky-${{ matrix.name }}:ci
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # Building is necessary but not sufficient: 441fe87 was a file that was missing
+  # FROM an image that built perfectly well. This job asserts the image's contents.
+  prod-image-contents:
+    name: prod image can actually migrate
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the api image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/api.Dockerfile
+          push: false
+          load: true
+          tags: glowsky-api:ci
+          cache-from: type=gha,scope=api
+
+      # The exact failure 441fe87 fixed: without alembic.ini and migrations/ in the
+      # image, this exits non-zero with "No 'script_location' key found", the
+      # prod-compose `migrate` service fails, and api/worker — which hard-depend on
+      # it completing — never start. Asserting the files exist would be weaker;
+      # this runs the command the compose file runs.
+      - name: alembic can resolve its config inside the image
+        run: |
+          docker run --rm \
+            -e GLOWSKY_ENVIRONMENT=ci \
+            -e GLOWSKY_DATABASE_URL=sqlite:////tmp/ci.db \
+            glowsky-api:ci \
+            alembic upgrade head
+
+      - name: the compose files reference only images that exist
+        run: |
+          # `config` fully resolves each topology: a typo in a build context, a
+          # dangling service reference or malformed YAML fails here rather than on
+          # somebody's first `docker compose up`.
+          docker compose -f docker-compose.yml config >/dev/null
+          docker compose -f docker-compose.prod.yml config >/dev/null
+          docker compose -f docker-compose.yml -f docker-compose.tools.yml config >/dev/null
+          docker compose -f docker-compose.yml -f docker-compose.docking.yml config >/dev/null
+          echo "all four compose topologies resolve"

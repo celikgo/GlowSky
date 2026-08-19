@@ -17,7 +17,7 @@ property* still surfaces the weakest axis for the chemist to act on.
 from __future__ import annotations
 
 from rdkit import Chem
-from rdkit.Chem import Crippen, rdMolDescriptors
+from rdkit.Chem import Crippen
 
 from services.chemistry.properties import compute_descriptors
 

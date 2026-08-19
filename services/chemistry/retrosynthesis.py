@@ -70,14 +70,15 @@ def retrosynthesize(canonical_smiles: str, max_routes: int = 10) -> dict:
             for p in products:
                 try:
                     Chem.SanitizeMol(p)
-                except Exception:
+                except Exception:  # noqa: BLE001 - an unsanitizable precursor invalidates the
+                    # disconnection; RDKit's sanitization errors have no common base class.
                     ok = False
                     break
                 res = validate_and_canonicalize(Chem.MolToSmiles(p))
                 if not res.valid:
                     ok = False
                     break
-                precursors.append(res.canonical_smiles)
+                precursors.append(res.smiles)
             if not ok or not precursors:
                 continue
             key = (reaction, frozenset(precursors))
@@ -122,21 +123,24 @@ def synthesizability(canonical_smiles: str) -> dict:
     retro = retrosynthesize(canonical_smiles)
     routes_to_bb = [d for d in retro["disconnections"] if d["all_building_blocks"]]
     route_found = len(routes_to_bb) > 0
-    best = routes_to_bb[0] if route_found else (
-        retro["disconnections"][0] if retro["disconnections"] else None
-    )
-
+    # Chosen inside each branch rather than before them: the previous form built
+    # `best` from a conditional and then re-derived the same condition to index it,
+    # which left the None case reachable on paper.
+    best: dict | None
     if route_found:
+        best = routes_to_bb[0]
         assessment = (
             f"SA {sa['sa_score']} ({_sa_label(sa['sa_score'])}); a one-step "
             f"{best['reaction']} from building-block-like precursors looks viable."
         )
     elif retro["disconnections"]:
+        best = retro["disconnections"][0]
         assessment = (
             f"SA {sa['sa_score']} ({_sa_label(sa['sa_score'])}); disconnectable via "
             f"{best['reaction']}, but the precursors are non-trivial — expect a multi-step route."
         )
     else:
+        best = None
         assessment = (
             f"SA {sa['sa_score']} ({_sa_label(sa['sa_score'])}); no recognised one-step "
             f"disconnection — needs route design beyond these templates."

@@ -51,6 +51,6 @@ def test_analog_generation_produces_valid_unique_structures():
 def test_analog_generation_rejects_invalid_parent():
     try:
         generate_analogs("garbage((", max_analogs=5)
-        assert False, "should have raised"
+        raise AssertionError("should have raised")
     except ValueError:
         pass

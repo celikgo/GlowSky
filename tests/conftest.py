@@ -51,7 +51,7 @@ class _FakeJWKClient:
     def __init__(self, public_key) -> None:
         self._public_key = public_key
 
-    def get_signing_key_from_jwt(self, token):  # noqa: ARG002 - signature mirror
+    def get_signing_key_from_jwt(self, token):
         return _FakeSigningKey(self._public_key)
 
 

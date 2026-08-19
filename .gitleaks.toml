@@ -1,0 +1,47 @@
+# gitleaks configuration.
+#
+# Starts from the upstream default rule set and adds only allowlist entries, each
+# with the reason it is not a leak. Nothing here disables a rule: an allowlist
+# that is broader than the thing it excuses is how a real key gets through.
+title = "glowsky"
+
+[extend]
+# Inherit every default rule (provider key prefixes, private keys, JWTs, ...).
+useDefault = true
+
+[[rules]]
+# Not in the default set: the Fernet key that encrypts stored BYO-LLM provider
+# credentials. It is 44 characters of urlsafe-base64 ending in '='. Committing one
+# would expose every stored provider key in any deployment using it.
+id = "glowsky-fernet-secret-key"
+description = "Fernet key (GLOWSKY_SECRET_KEY) committed in the clear"
+regex = '''GLOWSKY_SECRET_KEY\s*[=:]\s*['"]?[A-Za-z0-9_-]{43}=['"]?'''
+tags = ["key", "fernet", "glowsky"]
+
+[allowlist]
+description = "Known non-secrets"
+
+paths = [
+  # Compiled Python and JS build products; the sources they came from are scanned.
+  '''.*\.pyc$''',
+  '''^apps/desktop/public/RDKit_minimal\.js$''',
+  # The local dev SQLite database. It is gitignored and not tracked, so `detect`
+  # never sees it; this entry covers a directory scan (`gitleaks dir`), where it
+  # would otherwise be read as a binary blob and produce only noise.
+  '''^glowsky\.db$''',
+]
+
+regexes = [
+  # The deterministic development key. It is DERIVED at runtime from this
+  # passphrase (services/core/crypto.py), and it is public on purpose: that is
+  # precisely why validate_secret_config() refuses to let a non-dev environment
+  # fall back to it (GS-H1). A value whose whole design is to be public, and
+  # which the code actively refuses to use in production, is not a leak.
+  '''glowsky-dev-secret-do-not-use-in-production''',
+
+  # RSA keys minted inside the test suite. tests/conftest.py generates a fresh
+  # keypair per session to sign nakitte JWTs; nothing long-lived exists to leak.
+  '''-----BEGIN (RSA )?PRIVATE KEY-----''',
+]
+
+[allowlist.stopwords]

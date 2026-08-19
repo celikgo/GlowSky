@@ -1,0 +1,114 @@
+# Migrations, against the database production actually runs on.
+#
+# tests/test_migrations.py already proves the revisions agree with
+# Base.metadata — but it does that on SQLite, in a tempdir. Production is
+# Postgres (docker-compose.prod.yml, postgres:16-alpine), and the two engines do
+# not agree about the things migrations are made of: SQLite has no real ALTER, so
+# env.py runs it in batch mode (rewrite-the-table), while Postgres executes the
+# ALTER for real. A migration can therefore pass on SQLite and fail on Postgres.
+#
+# The second thing this checks is that DOWNGRADES exist and work. Nothing else in
+# the repository ever calls them, so without this job `alembic downgrade` is
+# untested code that only ever runs during an incident.
+name: migrations
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: migrations-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  postgres:
+    name: alembic up / down / up on postgres 16
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        # Same major as docker-compose.prod.yml. Testing against a different one
+        # would answer a question nobody asked.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: glowsky
+          POSTGRES_PASSWORD: glowsky
+          POSTGRES_DB: glowsky
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U glowsky"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # psycopg v3, matching the psycopg[binary] dependency in pyproject.toml.
+      GLOWSKY_DATABASE_URL: postgresql+psycopg://glowsky:glowsky@localhost:5432/glowsky
+      # env.py reads settings, and settings default `environment` to "production",
+      # which is the fail-safe that makes an unconfigured self-host refuse to boot.
+      # A CI database is not production and says so.
+      GLOWSKY_ENVIRONMENT: ci
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # --- forward ---------------------------------------------------------
+      - name: upgrade head
+        run: alembic upgrade head
+
+      - name: the schema matches the models on postgres
+        # The SQLite version of this assertion lives in tests/test_migrations.py.
+        # Run it here too, against Postgres, where compare_type actually has
+        # distinct types to compare.
+        run: pytest -q tests/test_migrations.py
+
+      # --- one step back, and forward again --------------------------------
+      # The narrow case a real rollback exercises: revert the newest revision and
+      # re-apply it. A downgrade that drops a column the upgrade then fails to
+      # re-add shows up right here.
+      - name: downgrade -1
+        run: alembic downgrade -1
+
+      - name: upgrade head (again)
+        run: alembic upgrade head
+
+      # --- and the whole way down ------------------------------------------
+      # Every downgrade() in the tree, not just the newest one. This is the only
+      # place they are executed at all.
+      - name: downgrade base
+        run: alembic downgrade base
+
+      - name: no application tables survive a full downgrade
+        # A downgrade that leaves tables behind is not a downgrade; the next
+        # upgrade would hit "relation already exists". alembic_version is expected
+        # to remain — that is alembic's own bookkeeping table, not ours.
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, inspect
+          engine = create_engine(os.environ["GLOWSKY_DATABASE_URL"])
+          tables = set(inspect(engine).get_table_names()) - {"alembic_version"}
+          if tables:
+              raise SystemExit(f"downgrade base left tables behind: {sorted(tables)}")
+          print("clean: only alembic_version remains")
+          PY
+
+      - name: upgrade head from empty (again)
+        run: alembic upgrade head

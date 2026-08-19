@@ -12,7 +12,7 @@ from rdkit.Chem import RDConfig
 
 # sascorer ships in RDKit's Contrib tree, not the main namespace.
 sys.path.append(os.path.join(RDConfig.RDContribDir, "SA_Score"))
-import sascorer  # noqa: E402
+import sascorer
 
 SYNTHESIZABLE_THRESHOLD = 6.0
 

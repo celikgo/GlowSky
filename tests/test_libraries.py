@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 from apps.api.main import app
 from tests.conftest import tenant
 
-
 # --- happy path (default principal): no token needed ---------------------------
 
 

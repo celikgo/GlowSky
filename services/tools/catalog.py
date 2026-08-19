@@ -8,14 +8,14 @@ from __future__ import annotations
 
 from services.chemistry.adapters.admet import predict_admet
 from services.chemistry.adapters.docking import dock
+from services.chemistry.bioisosteres import bioisosteric_analogs
 from services.chemistry.conformers import generate_conformers
 from services.chemistry.fingerprints import fingerprint
-from services.chemistry.bioisosteres import bioisosteric_analogs
 from services.chemistry.generative import generate_analogs
 from services.chemistry.medchem import medchem_rules, mpo_score
 from services.chemistry.mmp import matched_pairs, sar_transforms
-from services.chemistry.retrosynthesis import retrosynthesize, synthesizability
 from services.chemistry.properties import compute_descriptors, druglikeness, profile, structural_alerts
+from services.chemistry.retrosynthesis import retrosynthesize, synthesizability
 from services.chemistry.scaffolds import murcko_scaffold
 from services.chemistry.search import substructure_search
 from services.chemistry.similarity import bulk_similarity, tanimoto
@@ -35,7 +35,7 @@ V = "0.1.0"
 
 
 def _obj(**props) -> dict:
-    required = [k for k in props]
+    required = list(props)
     return {"type": "object", "properties": props, "required": required}
 
 

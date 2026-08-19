@@ -160,7 +160,6 @@ def test_configure_backends_wires_vina_from_settings():
     # wiring that turns that env into a live VinaDockingBackend on the dock tool seam.
     from types import SimpleNamespace
 
-    from services.chemistry.adapters import docking
     from services.chemistry.adapters.vina import VinaDockingBackend
     from services.chemistry.adapters.wiring import configure_backends
 

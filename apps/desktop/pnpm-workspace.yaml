@@ -1,3 +1,8 @@
+# esbuild ships a platform-specific binary that its install script fetches. Vite
+# needs it, and pnpm 10+ refuses to run install scripts unless a package is named
+# here. The previous value was pnpm's own placeholder text ("set this to true or
+# false"), which is not a boolean — under a non-interactive `pnpm install` in CI
+# that leaves the build unapproved and the run ends on ERR_PNPM_IGNORED_BUILDS.
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
 verifyDepsBeforeRun: false

@@ -1,0 +1,117 @@
+# Every URL in every doc resolves.
+#
+# Modelled on the same job in the sibling repository `salman`. "Every doc" here
+# includes the Python sources, because that is where this project's load-bearing
+# citations live: the ESOL regression in services/chemistry/adapters/admet_rdkit.py,
+# the Ertl SA score, the AutoDock Vina release the docking image pins, and the
+# benchmark provenance headers under tests/validation/reference/.
+#
+# A citation that 404s is indistinguishable from a citation that was never checked.
+# A drug-design tool that cites its models and lets the citations rot is making a
+# claim it cannot support, which is the one thing this repository must not do.
+name: docs-links
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly. Link rot is not caused by commits, so it cannot be caught by only
+    # checking commits.
+    - cron: '0 7 * * 1'
+
+concurrency:
+  group: docs-links-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    name: every URL in Markdown, Python and reference data resolves
+    # ubuntu-latest only, and not by preference: lychee-action's action.yml
+    # hardcodes a *-unknown-linux-gnu release tarball, so it cannot run on the
+    # macOS or Windows runners. A URL resolves or does not resolve independently
+    # of the machine asking, so one platform is also the right amount.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check links
+        uses: lycheeverse/lychee-action@v2
+        env:
+          # Unauthenticated requests to github.com get rate-limited into 429s,
+          # which are indistinguishable from dead links.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Stated rather than left to the default: the entire point of this job
+          # is that a dead link stops the build. A future default change must not
+          # quietly turn this into a report.
+          fail: true
+          args: >-
+            --no-progress
+            --verbose
+            --max-retries 3
+            --retry-wait-time 5
+            --timeout 30
+            --accept 200,206,301,302,308
+            --exclude '^https?://localhost'
+            --exclude '^https?://127\.0\.0\.1'
+            --exclude '^https?://[^/]*\.localhost'
+            --exclude '^https?://[^/]*\.(test|invalid|example)(:\d+)?(/|$)'
+            --exclude '^https?://([^/]*\.)?example\.com'
+            --exclude '\$\{'
+            './*.md'
+            './docs/**/*.md'
+            './apps/desktop/README.md'
+            './apps/api/**/*.py'
+            './services/**/*.py'
+            './scripts/**/*.py'
+            './tests/**/*.py'
+            './migrations/**/*.py'
+            './examples/**/*.py'
+            './tests/validation/reference/**'
+
+# ---------------------------------------------------------------------------
+# The exclusions, and why each one is here
+# ---------------------------------------------------------------------------
+#
+# --exclude localhost / 127.0.0.1 / *.localhost
+#   Every one of these is an address in the reader's own machine: the API on
+#   :8000, the Vite dev server on :1420, the mock auth service on :8081, Ollama
+#   on :11434, and `tauri://localhost` / `http://tauri.localhost`, which are the
+#   webview's own origins in the CORS allowlist. There is nothing on the far end
+#   of these on a CI runner, and there is not supposed to be.
+#
+# --exclude *.test / *.invalid / *.example / example.com
+#   RFC 2606 and RFC 6761 reserve these precisely so they can never be delegated
+#   and can never resolve. This repository uses `https://auth.nakitte.test` as
+#   the placeholder issuer in the auth tests and `http://evil.example.com` as the
+#   hostile origin in the CORS tests. Asking a resolver about either would be
+#   asking a question whose answer is fixed by an RFC. The patterns are anchored
+#   to the reserved TLDs and cannot swallow a real host.
+#
+# --exclude '\$\{'
+#   Not a host pattern: it skips URLs containing an unexpanded shell/Docker build
+#   variable. infra/docker/docking.Dockerfile pins AutoDock Vina as
+#   .../download/v${VINA_VERSION}/vina_${VINA_VERSION}_linux_x86_64 — a template,
+#   not an address. The version it expands to (1.2.5) is verified where it counts:
+#   the docker workflow builds that image, and the Dockerfile runs `vina --version`
+#   as a build step, so a moved or deleted release fails the build.
+#
+# The inputs are enumerated first-party paths, NOT './**/*.md' + './**/*.py'.
+#   A recursive glob also matches .venv313/ and apps/desktop/node_modules/ in any
+#   working tree that has them. Measured, that turns a 30-second job into a
+#   ten-minute one checking 3,628 URLs, 128 of which fail — every failure in
+#   somebody else's vendored README, none of them actionable here, and enough
+#   noise to bury a real dead citation. --exclude-path does not help, because the
+#   glob has already expanded those files into explicit inputs by the time it is
+#   consulted. Listing the directories this repository actually writes is the fix
+#   that cannot be defeated by an install.
+#
+# Nothing else is excluded. Notably NOT excluded: doi.org, ntrs.nasa.gov, the RCSB
+# PDB, and the journal links behind the benchmark reference data. Those are the
+# citations that give the validation suite its authority, and if one of them stops
+# resolving this job is meant to say so.

@@ -6,7 +6,7 @@ predictors plug in alongside these in Phase 1 (services.chemistry.prediction).
 from __future__ import annotations
 
 from rdkit import Chem
-from rdkit.Chem import Crippen, Descriptors, QED, rdMolDescriptors
+from rdkit.Chem import QED, Crippen, Descriptors, rdMolDescriptors
 from rdkit.Chem.FilterCatalog import FilterCatalog, FilterCatalogParams
 
 # Build alert catalogs once at import (cheap, reused across calls).

@@ -28,7 +28,18 @@ dependencies = [
 # pandas is used by exported notebooks (and to test their reproducibility), not by the
 # backend itself, so it lives in the dev/optional set.
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27", "pandas>=2.0"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5",
+    "httpx>=0.27",
+    "pandas>=2.0",
+    # Lint + types. Pinned to a minor series, not floated: a ruff or mypy release
+    # that adds a rule would otherwise turn a green branch red without a commit.
+    # CI installs exactly this set, so `make lint` locally and the CI gate agree.
+    "ruff>=0.16,<0.17",
+    "mypy>=2.3,<2.4",
+]
 
 [build-system]
 requires = ["setuptools>=77"]
@@ -44,3 +55,120 @@ testpaths = ["tests"]
 markers = [
     "real_auth: lift the default principal override and exercise real nakitte-JWT auth",
 ]
+
+# ---------------------------------------------------------------------------
+# Lint (ruff)
+# ---------------------------------------------------------------------------
+# The rule set is stated explicitly rather than inherited from ruff's defaults.
+# Ruff's default `select` has widened across releases (0.16 lints far more than
+# 0.5 did), so a workflow that just runs `ruff check` fails on a runner-image
+# roll for reasons unrelated to the diff. CI pins the ruff VERSION and this
+# block pins the RULES; together they make a lint failure mean "this code
+# changed", never "the tool changed".
+[tool.ruff]
+line-length = 110
+target-version = "py311"          # the floor of requires-python, not the dev interpreter
+# 110, not 88 or 100, because it is the width this codebase already writes to:
+# at 110 exactly six lines in the tree are over, and reflowing to a narrower
+# limit would rewrite hundreds of the explanatory comments that carry most of
+# this repository's reasoning. The limit is set to the code, not the code to
+# the limit.
+extend-exclude = [".venv313", "migrations/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import sorting
+    "UP",       # pyupgrade — keep syntax at the 3.11 floor, not below it
+    "B",        # flake8-bugbear
+    "C4",       # comprehension clarity
+    "SIM",      # flake8-simplify
+    "S",        # flake8-bandit — this service holds users' LLM API keys
+    "BLE",      # blind except: a broad catch must say why it is broad
+    "RUF",
+    "PLE", "PLW",
+]
+ignore = [
+    # FastAPI's dependency-injection idiom IS a function call in a default
+    # argument: `principal: Principal = Depends(require_write)`. B008 exists to
+    # catch accidentally-shared mutable defaults; here the call is the framework
+    # contract and evaluating it at import time is the intended behaviour.
+    "B008",
+    # `assert` is how pytest expresses every check. S101 would fire on every
+    # test line in the suite and say nothing.
+    "S101",
+    # RUF001/2/3 flag "ambiguous" Unicode: en/em dashes, ≈, ≤, °, µ, and Greek
+    # letters. This is a chemistry codebase whose comments quote real units and
+    # real inequalities ("logS (mol/L)", "RMSD ≤ 2.0 Å"). Spelling those in
+    # ASCII would make the prose worse, and the homoglyph-confusion attack the
+    # rule guards against does not apply to a comment.
+    "RUF001", "RUF002", "RUF003",
+    # UP042 rewrites `class C(str, Enum)` to `StrEnum`. They are not equivalent:
+    # `str(C.X)` yields "C.X" under the former and "x" under the latter. Several
+    # of these enums are serialised into tool payloads and persisted rows, so the
+    # rewrite is a wire-format change wearing a lint fix's clothes. Declined.
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests deliberately do insecure-looking things on purpose: they construct
+# throwaway tokens, run subprocesses, and bind to loopback.
+"tests/**" = ["S105", "S106", "S108", "S603", "S607"]
+# The demo script prints; it is a script.
+"scripts/**" = ["S603", "S607"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "services", "tests", "scripts"]
+
+# ---------------------------------------------------------------------------
+# Types (mypy)
+# ---------------------------------------------------------------------------
+# Deliberately NOT --strict. RDKit ships no type stubs and neither do several of
+# the runtime deps, so strict mode would produce thousands of import errors that
+# say nothing about this codebase. What is checked here is what mypy can check
+# honestly: the first-party call graph, with untyped third-party modules
+# admitted as Any at their boundary.
+[tool.mypy]
+# 3.12, not the 3.11 requires-python floor: numpy ships stubs that use PEP 695
+# `type` statements, and mypy refuses to parse them under --python-version 3.11
+# ("Type statement is only supported in Python 3.12 and greater"), which aborts
+# the whole run before it reaches any first-party file. The 3.11 language floor
+# is enforced by ruff's target-version = "py311" instead, which is the tool that
+# actually reads this repository's own syntax.
+python_version = "3.12"
+files = ["apps", "services", "scripts"]
+ignore_missing_imports = true      # rdkit, litellm, celery, sascorer: no stubs
+follow_imports = "normal"
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+exclude = ["^\\.venv313/", "^migrations/versions/"]
+
+[[tool.mypy.overrides]]
+# RDKit ships PARTIAL inline stubs. Because they exist, ignore_missing_imports does
+# not apply to them, and mypy checks calls against a surface that is missing most of
+# the library: Descriptors.MolWt, AllChem.ETKDGv3, AllChem.EmbedMolecule and ~20 more
+# all resolve to "Module has no attribute". Every one of those is a stub gap, not a
+# defect here — the calls are exercised by the 209-test suite on every run.
+#
+# Treating rdkit as Any is the honest position: we do not have type information for
+# it, so we should not pretend to check against it. What that costs is real and worth
+# stating — mypy cannot catch a genuine RDKit misuse either. The chemistry validation
+# tests are what covers that ground.
+#
+# Mechanically: recent rdkit wheels ship a SEPARATE `rdkit-stubs` package of
+# auto-generated .pyi files covering the C++ bindings but not the descriptors
+# RDKit builds dynamically at import time. `follow_imports` alone does not reach
+# them — mypy exempts stub files from it — so `follow_imports_for_stubs` is the
+# setting that actually applies here.
+module = ["rdkit.*", "sascorer.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Alembic's env.py runs under alembic's own import machinery, not ours.
+module = "migrations.*"
+ignore_errors = true

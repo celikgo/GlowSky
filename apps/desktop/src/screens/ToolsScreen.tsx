@@ -69,7 +69,6 @@ export function ToolsScreen() {
         if (ts.length) select(ts[0]);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Backend offline. Is `make run` up?"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function select(tool: ToolSpec) {

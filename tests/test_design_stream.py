@@ -23,14 +23,13 @@ def _drain(ws) -> list[dict]:
 
 
 def test_design_stream_relays_milestones_then_completes():
-    with TestClient(app) as client:
-        with client.websocket_connect("/agent/design/stream") as ws:
-            ws.send_json({
-                "goal": "make 8 analogs with MW<300, no PAINS, drug-like",
-                "seed_smiles": "c1ccccc1C(=O)O",
-                "persist": True,
-            })
-            events = _drain(ws)
+    with TestClient(app) as client, client.websocket_connect("/agent/design/stream") as ws:
+        ws.send_json({
+            "goal": "make 8 analogs with MW<300, no PAINS, drug-like",
+            "seed_smiles": "c1ccccc1C(=O)O",
+            "persist": True,
+        })
+        events = _drain(ws)
 
     types = [e["type"] for e in events]
     # The full milestone sequence streams, in order, before the terminal frame.
@@ -57,20 +56,18 @@ def test_design_stream_relays_milestones_then_completes():
 
 
 def test_design_stream_reports_invalid_seed_as_error_frame():
-    with TestClient(app) as client:
-        with client.websocket_connect("/agent/design/stream") as ws:
-            ws.send_json({"goal": "make analogs", "seed_smiles": "not-a-molecule(("})
-            events = _drain(ws)
+    with TestClient(app) as client, client.websocket_connect("/agent/design/stream") as ws:
+        ws.send_json({"goal": "make analogs", "seed_smiles": "not-a-molecule(("})
+        events = _drain(ws)
 
     assert events and events[-1]["type"] == "error"
     assert "invalid" in events[-1]["error"].lower()
 
 
 def test_design_stream_requires_goal_and_seed():
-    with TestClient(app) as client:
-        with client.websocket_connect("/agent/design/stream") as ws:
-            ws.send_json({"goal": "", "seed_smiles": ""})
-            events = _drain(ws)
+    with TestClient(app) as client, client.websocket_connect("/agent/design/stream") as ws:
+        ws.send_json({"goal": "", "seed_smiles": ""})
+        events = _drain(ws)
 
     assert events == [{"type": "error", "error": "goal and seed_smiles are required"}]
 

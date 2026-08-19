@@ -17,8 +17,14 @@ DEFAULT_ENDPOINTS = ["solubility", "logd", "herg", "cyp3a4", "metabolic_stabilit
 
 @runtime_checkable
 class ADMETBackend(Protocol):
-    name: str
-    endpoints: list[str]
+    # Read-only members: nothing assigns through this protocol, and declaring them
+    # settable would reject any backend that derives its name from configuration
+    # (see VinaDockingBackend.name on the docking seam).
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def endpoints(self) -> list[str]: ...
 
     def predict(self, canonical_smiles: str, endpoints: list[str]) -> dict: ...
 
@@ -27,7 +33,13 @@ class NotConfiguredADMET:
     """Default backend: refuses to guess. Swap for a real model to enable the tool."""
 
     name = "not-configured"
-    endpoints: list[str] = []
+
+    def __init__(self) -> None:
+        # An INSTANCE attribute, not a class-level `endpoints: list[str] = []`.
+        # Two reasons: a class-level mutable default is shared by every instance
+        # (ruff RUF012), and a ClassVar does not satisfy ADMETBackend, whose
+        # `endpoints` is declared as a settable instance variable.
+        self.endpoints: list[str] = []
 
     def predict(self, canonical_smiles: str, endpoints: list[str]) -> dict:
         raise BackendNotConfigured(
@@ -42,7 +54,11 @@ _backend: ADMETBackend = NotConfiguredADMET()
 
 
 def set_backend(backend: ADMETBackend) -> None:
-    global _backend
+    # The module-level singleton IS the adapter seam (docs/13 §6). The API
+    # lifespan and each Celery worker call this exactly once at startup so both the fast
+    # path and the slow path resolve the same configured backend; threading it through
+    # every call site would push wiring into the chemistry functions.
+    global _backend  # noqa: PLW0603
     _backend = backend
 
 

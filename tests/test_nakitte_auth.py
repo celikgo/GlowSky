@@ -11,7 +11,6 @@ from __future__ import annotations
 import time
 import uuid
 
-import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
@@ -22,7 +21,6 @@ from services.core.db import session_scope
 from services.core.models import Organization
 from tests.conftest import auth_header, make_token
 
-
 # --- H1: every execution endpoint requires a token ----------------------------
 
 
@@ -30,8 +28,10 @@ from tests.conftest import auth_header, make_token
 def test_execution_surface_requires_a_token():
     with TestClient(app) as client:
         assert client.post("/tools/validate_molecule", json={"args": {"smiles": "CCO"}}).status_code == 401
-        assert client.post("/jobs", json={"tool": "sa_score", "args": {"canonical_smiles": "CCO"}}).status_code == 401
-        assert client.post("/jobs/batch", json={"tool": "sa_score", "items": [{"canonical_smiles": "CCO"}]}).status_code == 401
+        job = {"tool": "sa_score", "args": {"canonical_smiles": "CCO"}}
+        assert client.post("/jobs", json=job).status_code == 401
+        batch = {"tool": "sa_score", "items": [{"canonical_smiles": "CCO"}]}
+        assert client.post("/jobs/batch", json=batch).status_code == 401
         assert client.post("/molecules/validate", json={"smiles": "CCO"}).status_code == 401
 
 

@@ -1,0 +1,139 @@
+# The pre-merge gate.
+#
+# Before this file existed, 10.3k lines of Python and 5.0k of TypeScript merged on
+# nothing but a local `make test`, and the README said so in as many words:
+# "there is no CI, so 3.11/3.12 are supported by declaration but never exercised."
+# This workflow is what converts that declaration into a fact — the matrix below is
+# the only thing entitling pyproject.toml to say `requires-python = ">=3.11,<3.14"`.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: ruff + mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      # The whole dependency set, not just the linters: mypy needs the real
+      # packages on the path to resolve any of the first-party call graph, and a
+      # mypy run with missing imports is a green tick that checked almost nothing.
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # Rule selection lives in pyproject.toml [tool.ruff.lint] and the version is
+      # pinned in the dev extra, so a failure here means this code changed — never
+      # that the tool did.
+      - name: ruff
+        run: ruff check apps services tests scripts migrations
+
+      - name: mypy
+        run: mypy
+
+  test:
+    name: pytest (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Do not cancel 3.12 because 3.11 failed: which versions break is exactly
+      # the information this matrix exists to produce.
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      # RDKit installs from the PyPI wheel (the `rdkit` project, which publishes
+      # manylinux wheels for cp311-cp313). No conda, no compiler, no apt step —
+      # the wheel bundles its own shared libraries.
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Show the resolved chemistry stack
+        # Printed on every run because a validation number is only meaningful next
+        # to the version of the library that produced it (see docs/VALIDATION.md).
+        run: |
+          python -c "import rdkit, sys; print('python', sys.version)"
+          python -c "import rdkit; print('rdkit', rdkit.__version__)"
+
+      - name: pytest
+        run: |
+          pytest -q \
+            --cov=services --cov=apps \
+            --cov-report=term-missing:skip-covered \
+            --cov-report=xml \
+            --cov-fail-under=85
+
+      # One leg uploads the report; three identical artifacts would be noise.
+      - name: Upload coverage
+        if: matrix.python == '3.13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: error
+
+  frontend:
+    name: desktop (tsc + vitest + eslint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v5
+
+      # pnpm, not npm: apps/desktop ships a pnpm-lock.yaml and no
+      # package-lock.json, so `npm ci` has no lockfile to be faithful to.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      # --frozen-lockfile makes a lockfile that disagrees with package.json a
+      # failure rather than a silent update, which is the only way the versions
+      # tested here are the versions anybody else gets.
+      # The postinstall step copies RDKit's MinimalLib WASM into public/.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: tsc --noEmit
+        run: pnpm typecheck
+
+      - name: vitest
+        run: pnpm test
+
+      # Fails on errors; the react-hooks/set-state-in-effect advisories are
+      # configured as warnings in eslint.config.js with the reasoning written out
+      # there. Warnings are printed, not gated.
+      - name: eslint
+        run: pnpm lint

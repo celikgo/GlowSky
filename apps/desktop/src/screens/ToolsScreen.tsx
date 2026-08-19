@@ -7,6 +7,7 @@ import {
   type ToolSpec,
 } from "../lib/api";
 import { MoleculeStructure } from "../components/MoleculeStructure";
+import { PredictionPanel } from "../components/PredictionCard";
 
 // Prefill the first plausible field so most tools are one-click runnable.
 function prefill(name: string, prop: JsonSchemaProp): string {
@@ -230,6 +231,13 @@ export function ToolsScreen() {
                     ))}
                   </div>
                 ) : null}
+
+                {/* Predictions get a real surface before the raw payload. A predicted value
+                    skimmed out of a JSON blob reads exactly like a measurement, which is what
+                    the uncertainty / applicability-domain / provenance shape exists to prevent.
+                    The JSON stays below it — nothing is hidden, it is just no longer the only
+                    presentation. */}
+                <PredictionPanel output={result.output} />
 
                 <pre className="tools__output mono">{JSON.stringify(result.output, null, 2)}</pre>
               </>

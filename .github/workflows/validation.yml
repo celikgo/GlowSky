@@ -1,0 +1,135 @@
+# Validation against published reference values.
+#
+# This is the workflow that separates a credible scientific tool from a demo. The
+# rest of CI checks that Glowsky does what Glowsky intends. This one checks that
+# Glowsky agrees with numbers whose author is somebody else: 1128 measured aqueous
+# solubilities from Delaney's compilation, and a ligand binding mode determined by
+# X-ray crystallography and deposited in the PDB.
+#
+# Two properties make it worth having, and both are enforced here rather than assumed:
+#
+#   1. IT CANNOT SILENTLY SKIP. The re-docking benchmark needs AutoDock Vina and
+#      OpenBabel, and skips locally when they are absent. A validation suite whose
+#      headline benchmark quietly skips in CI is worse than no suite: it produces a
+#      green tick that means nothing. GLOWSKY_REQUIRE_DOCKING=1 turns that skip into
+#      a failure, and the step after the run asserts the skip count is zero.
+#
+#   2. docs/VALIDATION.md CANNOT DRIFT. The document is generated from the run, and
+#      this workflow fails if the committed copy differs from what the suite just
+#      measured. A validation page maintained by hand becomes a specific false claim
+#      about accuracy, published under the project's name.
+name: validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: validation-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  benchmarks:
+    name: published reference values
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      # A skip is a failure here. See the header.
+      GLOWSKY_REQUIRE_DOCKING: '1'
+      GLOWSKY_ENVIRONMENT: ci
+      GLOWSKY_VALIDATION_RESULTS: ${{ github.workspace }}/validation-results.json
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # OpenBabel converts the receptor and the docked poses between PDB and PDBQT.
+      - name: Install OpenBabel
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openbabel
+          obabel -V
+
+      # AutoDock Vina's official static x86_64 release binary — the same version and
+      # the same source that infra/docker/docking.Dockerfile pins, so the benchmark
+      # measures the engine the shipped image actually runs.
+      - name: Install AutoDock Vina
+        env:
+          VINA_VERSION: 1.2.5
+        run: |
+          curl -fsSL -o /usr/local/bin/vina \
+            "https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v${VINA_VERSION}/vina_${VINA_VERSION}_linux_x86_64"
+          sudo chmod +x /usr/local/bin/vina
+          vina --version
+
+      - name: Record the environment
+        # A validation number is only meaningful beside the versions that produced it,
+        # and docs/VALIDATION.md reports them.
+        run: |
+          python -c "import sys; print('python ', sys.version.split()[0])"
+          python -c "import rdkit; print('rdkit  ', rdkit.__version__)"
+          vina --version | head -1
+
+      - name: Run the validation suite
+        run: |
+          pytest tests/validation/ -v --tb=short --junitxml=validation-junit.xml
+
+      # Belt and braces alongside GLOWSKY_REQUIRE_DOCKING: assert directly against the
+      # JUnit report that nothing was skipped. If a future test grows its own skip
+      # condition that does not consult that variable, this still catches it.
+      - name: no benchmark may have skipped
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          suite = ET.parse("validation-junit.xml").getroot()
+          # <testsuites> wraps one <testsuite>.
+          ts = suite.find("testsuite") if suite.tag == "testsuites" else suite
+          tests = int(ts.get("tests", 0))
+          skipped = int(ts.get("skipped", 0))
+          print(f"{tests} validation tests, {skipped} skipped")
+          if skipped:
+              names = [
+                  tc.get("name")
+                  for tc in ts.iter("testcase")
+                  if tc.find("skipped") is not None
+              ]
+              raise SystemExit(f"validation tests skipped in CI: {names}")
+          if tests == 0:
+              raise SystemExit("no validation tests ran at all")
+          PY
+
+      - name: docs/VALIDATION.md matches what the suite measured
+        run: |
+          python -m tests.validation.report
+          if ! git diff --exit-code -- docs/VALIDATION.md; then
+            echo "::error file=docs/VALIDATION.md::regenerating from this run produced a" \
+                 "different document. docs/VALIDATION.md is generated, not written:" \
+                 "run 'make validate' and commit the result."
+            exit 1
+          fi
+          echo "docs/VALIDATION.md is in sync with the measured results"
+
+      - name: Upload the raw results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-results
+          path: |
+            validation-results.json
+            validation-junit.xml
+          if-no-files-found: warn

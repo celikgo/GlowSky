@@ -10,6 +10,11 @@ __pycache__/
 .env
 *.key
 
+# Validation run artifacts. docs/VALIDATION.md IS committed (it is the published
+# report and CI checks it against a fresh run); the raw results are not.
+validation-results.json
+validation-junit.xml
+
 # Coverage artifacts (CI uploads coverage.xml as a run artifact instead)
 .coverage
 coverage.xml

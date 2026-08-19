@@ -2,7 +2,7 @@ PY ?= .venv313/bin/python
 PIP ?= .venv313/bin/pip
 ALEMBIC ?= $(PY) -m alembic
 
-.PHONY: venv install test cov lint fix run demo clean migrate migration migrate-down \
+.PHONY: venv install test cov validate lint fix run demo clean migrate migration migrate-down \
         migrate-history desktop desktop-install desktop-build
 
 venv:                ## Create the Python 3.13 virtualenv (RDKit-compatible)
@@ -17,6 +17,11 @@ test:                ## Run the test suite
 cov:                 ## Run the test suite with coverage (same gate as CI)
 	$(PY) -m pytest -q --cov=services --cov=apps \
 		--cov-report=term-missing:skip-covered --cov-fail-under=85
+
+validate:            ## Run the validation suite and regenerate docs/VALIDATION.md
+	rm -f validation-results.json
+	$(PY) -m pytest tests/validation/ -v
+	$(PY) -m tests.validation.report
 
 lint:                ## ruff + mypy — the exact checks .github/workflows/ci.yml runs
 	$(PY) -m ruff check apps services tests scripts migrations

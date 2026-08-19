@@ -1,0 +1,96 @@
+# Glowsky from a PUBLISHED RELEASE — the same production stack, pulled rather than built.
+#
+#   export GLOWSKY_SECRET_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+#   export GLOWSKY_DB_PASSWORD="$(openssl rand -hex 24)"
+#   docker compose -f docker-compose.release.yml up -d
+#   curl localhost:8000/health
+#
+# docker-compose.prod.yml BUILDS from the working tree, so what it runs is whatever is
+# checked out — a moving target, and not something a bug report can identify. This file
+# runs a specific published image instead. Nothing here has a `build:` section, so
+# `docker compose up` pulls; there is no path by which it silently builds local source
+# and calls the result a release.
+#
+# The topology, the environment and the migrate-before-serve ordering are identical to
+# docker-compose.prod.yml. Read that file for why the stack is shaped this way; the only
+# difference here is the provenance of the application image.
+#
+#   GLOWSKY_VERSION  — which release to run. Defaults to the version this checkout
+#                      declares, so the file is pinned rather than tracking `latest`.
+#                      Override to run another: GLOWSKY_VERSION=0.2.0 docker compose ...
+#                      tests/test_version_consistency.py keeps the default in step with
+#                      pyproject.toml and the desktop manifests.
+#
+# REQUIRED env (the ${...:?} guards refuse to start rather than pick an insecure default):
+#   GLOWSKY_SECRET_KEY   — Fernet key for BYO-LLM secrets at rest (GS-H1). Keep stable & secret.
+#   GLOWSKY_DB_PASSWORD  — Postgres password for the glowsky role.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: glowsky
+      POSTGRES_DB: glowsky
+      POSTGRES_PASSWORD: ${GLOWSKY_DB_PASSWORD:?set GLOWSKY_DB_PASSWORD to the Postgres password}
+    volumes:
+      - glowsky-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glowsky -d glowsky"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Internal only — no published port.
+    restart: unless-stopped
+
+  migrate:
+    image: ghcr.io/celikgo/glowsky:${GLOWSKY_VERSION:-0.1.0}
+    command: alembic upgrade head
+    environment:
+      GLOWSKY_ENVIRONMENT: production
+      GLOWSKY_DATABASE_URL: postgresql+psycopg://glowsky:${GLOWSKY_DB_PASSWORD:?set GLOWSKY_DB_PASSWORD to the Postgres password}@postgres:5432/glowsky
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: ghcr.io/celikgo/glowsky:${GLOWSKY_VERSION:-0.1.0}
+    command: uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      GLOWSKY_ENVIRONMENT: production
+      GLOWSKY_SECRET_KEY: ${GLOWSKY_SECRET_KEY:?set GLOWSKY_SECRET_KEY to a Fernet key — see header}
+      GLOWSKY_DATABASE_URL: postgresql+psycopg://glowsky:${GLOWSKY_DB_PASSWORD:?set GLOWSKY_DB_PASSWORD to the Postgres password}@postgres:5432/glowsky
+      GLOWSKY_REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/celikgo/glowsky:${GLOWSKY_VERSION:-0.1.0}
+    command: celery -A services.tools.queue.celery_app worker --loglevel=info
+    environment:
+      GLOWSKY_ENVIRONMENT: production
+      GLOWSKY_SECRET_KEY: ${GLOWSKY_SECRET_KEY:?set GLOWSKY_SECRET_KEY to a Fernet key — see header}
+      GLOWSKY_DATABASE_URL: postgresql+psycopg://glowsky:${GLOWSKY_DB_PASSWORD:?set GLOWSKY_DB_PASSWORD to the Postgres password}@postgres:5432/glowsky
+      GLOWSKY_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  glowsky-pgdata:

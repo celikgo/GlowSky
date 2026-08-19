@@ -118,7 +118,7 @@ jobs:
       # first that it refuses, then that it resolves once configured.
       - name: the stack refuses to start unconfigured
         run: |
-          for f in docker-compose.yml docker-compose.prod.yml; do
+          for f in docker-compose.yml docker-compose.prod.yml docker-compose.release.yml; do
             if docker compose -f "$f" config >/dev/null 2>&1; then
               echo "::error file=$f::resolved with no GLOWSKY_SECRET_KEY set;" \
                    "the :? guard on the secret is missing or ineffective"
@@ -142,4 +142,30 @@ jobs:
           docker compose -f docker-compose.prod.yml config >/dev/null
           docker compose -f docker-compose.yml -f docker-compose.tools.yml config >/dev/null
           docker compose -f docker-compose.yml -f docker-compose.docking.yml config >/dev/null
-          echo "all four compose topologies resolve"
+          docker compose -f docker-compose.release.yml config >/dev/null
+          echo "all five compose topologies resolve"
+
+      # docker-compose.release.yml exists to run a PUBLISHED image. A `build:` section
+      # creeping into it — by a copy-paste from the prod file, most likely — would make
+      # `docker compose up` silently build the working tree and present the result as
+      # the released version, which is the one thing this file is for preventing.
+      - name: the release topology pulls and never builds
+        env:
+          GLOWSKY_SECRET_KEY: ci-placeholder-not-a-real-key-000000000000=
+          GLOWSKY_DB_PASSWORD: ci-placeholder
+        run: |
+          if docker compose -f docker-compose.release.yml config | grep -q 'build:'; then
+            echo "::error file=docker-compose.release.yml::a build: section is present;" \
+                 "this topology must run the published image, not the working tree"
+            exit 1
+          fi
+          # Every application service must run the same pinned tag. A partial bump
+          # would run an API and a worker from different releases against one database.
+          TAGS="$(docker compose -f docker-compose.release.yml config \
+                  | grep -o 'ghcr\.io/celikgo/glowsky:[^ ]*' | sort -u)"
+          echo "$TAGS"
+          if [ "$(echo "$TAGS" | wc -l)" -ne 1 ]; then
+            echo "::error file=docker-compose.release.yml::services pin different image tags"
+            exit 1
+          fi
+          echo "ok: release topology pulls a single pinned image"

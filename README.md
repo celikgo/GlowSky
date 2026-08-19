@@ -210,20 +210,42 @@ Build with `make tools-thy`; they register exactly like a built-in tool.
 
 ### Run the whole stack on Docker
 
-Four compose files, selected with `-f` — a base dev stack, a standalone prod stack, and two
-opt-in overlays. (These are plain files, not Compose `profiles:`; `docker compose --profile …`
-does not apply here.) Each has a different security posture:
+Five compose files, selected with `-f` — a base dev stack, a standalone prod stack, a
+released-image stack, and two opt-in overlays. (These are plain files, not Compose
+`profiles:`; `docker compose --profile …` does not apply here.) Each has a different
+security posture:
 
 | Stack | Command | Database | Docker socket | Container tools |
 |---|---|---|---|---|
 | **dev (default)** | `docker compose up --build` | SQLite | none (socket-free) | off |
 | **prod** | `docker compose -f docker-compose.prod.yml up --build` | **Postgres** (Alembic-migrated) | none (socket-free) | off |
+| **release (pinned image)** | `docker compose -f docker-compose.release.yml up -d` | **Postgres** (Alembic-migrated) | none (socket-free) | off |
 | **tools (opt-in overlay)** | `docker compose -f docker-compose.yml -f docker-compose.tools.yml up --build` | SQLite | **mounted** (root-equivalent) | **on** |
 | **docking (opt-in overlay)** | `make up-docking` (= `docker compose -f docker-compose.yml -f docker-compose.docking.yml up --build`) | SQLite | none (socket-free) | off |
 
 ```bash
 docker compose up --build   # redis + api + worker (same image), SQLite, API at :8000
 ```
+
+#### Running a release rather than the working tree
+
+Every stack above with `--build` runs **whatever is checked out**, which is a moving target
+and not something a bug report can identify. `docker-compose.release.yml` runs a published
+image instead:
+
+```bash
+export GLOWSKY_SECRET_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+export GLOWSKY_DB_PASSWORD="$(openssl rand -hex 24)"
+docker compose -f docker-compose.release.yml up -d     # pulls ghcr.io/celikgo/glowsky
+curl localhost:8000/health
+```
+
+It has no `build:` section anywhere, so there is no path by which it quietly builds local
+source and presents the result as a release — `.github/workflows/docker.yml` fails the
+build if one appears, and if the three application services ever pin different tags. The
+default tag is the version this checkout declares, kept in step with `pyproject.toml` and
+the desktop manifests by `tests/test_version_consistency.py`. Run a different release with
+`GLOWSKY_VERSION=0.2.0 docker compose -f docker-compose.release.yml up -d`.
 
 The default and prod stacks are **socket-free** and register only the in-process built-in
 RDKit tools. `docker-compose.prod.yml` is a complete standalone stack (not an overlay): it

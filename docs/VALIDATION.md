@@ -20,7 +20,18 @@ if the result differs from what is committed, so its content must depend only on
 the measurements — a clock in the file would make every run differ from every
 other. Git already records when it changed.
 
-_Environment: python 3.13.2, rdkit 2026.03.5._
+_Environment: engine AutoDock Vina v1.2.5, python 3.13.15, python 3.13.2, rdkit 2026.03.5._
+
+---
+
+## Not currently meeting its criterion
+
+Stated here, at the top, rather than left to be discovered further down. These
+benchmarks run and are measured; they do not meet the success criterion they are
+judged against, and the criterion has not been moved to accommodate that.
+
+- **Docking — re-docking a crystallographic pose** — best_pose_rmsd_angstrom = 0.853, n_poses = 8, rmsd_angstrom = 4.725, top_score_kcal_per_mol = -10.23. See below for what this means.
+
 
 ---
 
@@ -43,6 +54,23 @@ _Environment: python 3.13.2, rdkit 2026.03.5._
 | `rmse_log_units` | 1.0994 | `<= 1.15` |
 
 > **What this does not show.** Reproduction of a published model on its own domain, NOT generalisation: the Delaney compilation includes the compounds ESOL was fitted on. An RMSE near one log unit is a factor of ten in concentration, which is why the predictor returns an interval rather than a point estimate. The measured RMSE here is the value used to build every solubility confidence interval Glowsky reports.
+
+### Docking — re-docking a crystallographic pose
+
+- **Status:** **FAIL — does not meet its stated criterion**
+- **Model under test:** AutoDock Vina via services/chemistry/adapters/vina.py (AutoDock Vina v1.2.5)
+- **Benchmark:** 1HSG self-docking, heavy-atom RMSD to the deposited pose (_n_ = 1)
+- **Reference source:** RCSB PDB 1HSG — Chen, Z. et al., J. Biol. Chem. 269, 26344 (1994); success criterion from Trott & Olson, J. Comput. Chem. 31, 455-461 (2010)
+  <https://doi.org/10.2210/pdb1hsg/pdb>
+
+| metric | measured | gate |
+|---|---|---|
+| `best_pose_rmsd_angstrom` | 0.853 | `not gated (diagnostic)` |
+| `n_poses` | 8 | — |
+| `rmsd_angstrom` | 4.725 | `<= 2.0` |
+| `top_score_kcal_per_mol` | -10.23 | — |
+
+> **What this does not show.** Self-docking: the receptor is already in the conformation this ligand induced, which is the easiest case in structure-based modelling. It is evidence that the SMILES -> embed -> PDBQT -> Vina -> pose-parse pipeline is correct end to end, NOT evidence that Glowsky can place a novel ligand. The score is reported for completeness and is not a binding affinity. One structure bounds nothing about average performance.
 
 ---
 

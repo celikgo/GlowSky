@@ -16,10 +16,20 @@ from dataclasses import asdict, dataclass, field
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 REFERENCE_DIR = pathlib.Path(__file__).resolve().parent / "reference"
 
-#: Where each test deposits its result. Overridable so a local run does not clobber
-#: whatever a CI run left behind.
+#: The measurement record, and it is COMMITTED rather than being a run artifact.
+#:
+#: That is a deliberate choice with a concrete reason. The re-docking benchmark needs
+#: AutoDock Vina, so it skips on a machine without it — which is most machines. If this
+#: file were regenerated from scratch each run, a developer running `make validate`
+#: locally would produce a record containing only the benchmarks they could run, and
+#: committing it would silently delete the docking result from docs/VALIDATION.md.
+#:
+#: Because `ValidationResult.record()` replaces only the entry for the capability it
+#: measured, a committed record makes a partial local run additive: it refreshes what it
+#: measured and leaves the rest of the published results alone. CI, which can run
+#: everything, refreshes everything.
 RESULTS_PATH = pathlib.Path(
-    os.environ.get("GLOWSKY_VALIDATION_RESULTS", ROOT / "validation-results.json")
+    os.environ.get("GLOWSKY_VALIDATION_RESULTS", ROOT / "docs" / "validation-results.json")
 )
 
 

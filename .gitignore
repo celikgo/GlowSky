@@ -10,9 +10,10 @@ __pycache__/
 .env
 *.key
 
-# Validation run artifacts. docs/VALIDATION.md IS committed (it is the published
-# report and CI checks it against a fresh run); the raw results are not.
-validation-results.json
+# docs/VALIDATION.md and docs/validation-results.json ARE committed — they are the
+# published measurement record, and a partial local run merges into the record rather
+# than replacing it (see tests/validation/_harness.py). Only the JUnit report, which is
+# per-run scaffolding, is ignored.
 validation-junit.xml
 
 # Coverage artifacts (CI uploads coverage.xml as a run artifact instead)

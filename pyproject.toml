@@ -1,7 +1,7 @@
 [project]
 name = "glowsky"
-version = "0.0.1"
-description = "Glowsky — AI-native workspace for small-molecule drug design (Phase 0 scaffold)"
+version = "0.1.0"
+description = "Glowsky — AI-native workspace for small-molecule drug design"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11,<3.14"

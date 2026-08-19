@@ -43,7 +43,6 @@ jobs:
       # A skip is a failure here. See the header.
       GLOWSKY_REQUIRE_DOCKING: '1'
       GLOWSKY_ENVIRONMENT: ci
-      GLOWSKY_VALIDATION_RESULTS: ${{ github.workspace }}/validation-results.json
 
     steps:
       - uses: actions/checkout@v5
@@ -130,8 +129,8 @@ jobs:
         if: always()
         run: |
           python - <<'PY'
-          import json, os, pathlib
-          path = pathlib.Path(os.environ["GLOWSKY_VALIDATION_RESULTS"])
+          import json, pathlib
+          path = pathlib.Path("docs/validation-results.json")
           if not path.exists():
               raise SystemExit("no validation results recorded")
           results = json.loads(path.read_text())
@@ -151,6 +150,6 @@ jobs:
         with:
           name: validation-results
           path: |
-            validation-results.json
+            docs/validation-results.json
             validation-junit.xml
           if-no-files-found: warn

@@ -52,6 +52,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # On a tag push this is what checkout would pick anyway. On
+          # workflow_dispatch it is NOT: the default is the branch the run was
+          # dispatched from, so re-running an old tag would quietly build main and
+          # attach the result to that tag's release.
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
 
       - uses: actions/setup-python@v6
         with:
@@ -64,8 +71,10 @@ jobs:
           pip install -e ".[dev]"
 
       - name: The tag matches the version in the files
-        # tests/test_version_consistency.py already checks the four declarations agree
+        # tests/test_version_consistency.py already checks the five declarations agree
         # with each other; this checks they agree with the TAG, which only exists here.
+        # With the checkout above pinned to the tag, this now compares the tag against
+        # the version IN that tag, rather than against whatever main happens to declare.
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
@@ -89,6 +98,13 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+        with:
+          # On a tag push this is what checkout would pick anyway. On
+          # workflow_dispatch it is NOT: the default is the branch the run was
+          # dispatched from, so re-running an old tag would quietly build main and
+          # attach the result to that tag's release.
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
 
       - uses: docker/setup-buildx-action@v3
 
@@ -134,6 +150,13 @@ jobs:
           - { name: linux-x64, os: ubuntu-22.04 }
     steps:
       - uses: actions/checkout@v5
+        with:
+          # On a tag push this is what checkout would pick anyway. On
+          # workflow_dispatch it is NOT: the default is the branch the run was
+          # dispatched from, so re-running an old tag would quietly build main and
+          # attach the result to that tag's release.
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
 
       # Tauri's Linux target builds against the system webkit2gtk; ubuntu-22.04 is
       # pinned rather than -latest because 24.04 ships webkit2gtk-4.1 under a different
@@ -203,6 +226,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # On a tag push this is what checkout would pick anyway. On
+          # workflow_dispatch it is NOT: the default is the branch the run was
+          # dispatched from, so re-running an old tag would quietly build main and
+          # attach the result to that tag's release.
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
 
       - uses: actions/download-artifact@v4
         with:

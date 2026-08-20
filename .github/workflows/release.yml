@@ -27,6 +27,19 @@ permissions:
   contents: write   # create the release and upload assets
   packages: write   # push the image to GHCR
 
+# Tagging v0.1.0 produced TWO identical push-triggered runs, one second apart. Left
+# alone they build the same commit twice and then both call the release action for the
+# same tag, uploading assets concurrently — which is how a release ends up with
+# duplicated or truncated bundles attached.
+#
+# Keyed on the tag rather than the workflow, so releasing v0.1.1 while v0.1.0 is still
+# building is not treated as a conflict. cancel-in-progress is on because the duplicate
+# is byte-identical to the run it replaces: there is nothing to lose by dropping the
+# older one, and it guarantees exactly one job reaches the publish step.
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -125,13 +138,20 @@ jobs:
       # Tauri's Linux target builds against the system webkit2gtk; ubuntu-22.04 is
       # pinned rather than -latest because 24.04 ships webkit2gtk-4.1 under a different
       # package name and the two are not interchangeable.
+      # libappindicator3-dev is deliberately absent: it Conflicts with
+      # libayatana-appindicator3-dev, so asking apt for both is unsatisfiable and the
+      # whole step exits 100 —
+      #     libayatana-appindicator3-dev : Conflicts: libappindicator3-dev
+      #     E: Unable to correct problems, you have held broken packages.
+      # which is how v0.1.0 shipped without a Linux bundle. The ayatana package is the
+      # maintained one and the only one Tauri v2's own Linux prerequisites list.
       - name: Linux build dependencies
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
-            build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev
+            libwebkit2gtk-4.1-dev librsvg2-dev patchelf build-essential curl wget file \
+            libssl-dev libgtk-3-dev libayatana-appindicator3-dev
 
       - uses: dtolnay/rust-toolchain@stable
 

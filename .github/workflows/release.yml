@@ -27,6 +27,19 @@ permissions:
   contents: write   # create the release and upload assets
   packages: write   # push the image to GHCR
 
+# Tagging v0.1.0 produced TWO identical push-triggered runs, one second apart. Left
+# alone they build the same commit twice and then both call the release action for the
+# same tag, uploading assets concurrently — which is how a release ends up with
+# duplicated or truncated bundles attached.
+#
+# Keyed on the tag rather than the workflow, so releasing v0.1.1 while v0.1.0 is still
+# building is not treated as a conflict. cancel-in-progress is on because the duplicate
+# is byte-identical to the run it replaces: there is nothing to lose by dropping the
+# older one, and it guarantees exactly one job reaches the publish step.
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}

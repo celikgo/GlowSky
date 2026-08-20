@@ -135,10 +135,12 @@ tool silently means no network, and most predictive endpoints are unvalidated.
 
 Desktop bundles are **unsigned**.
 
-<!-- These point at pages that exist today. Once v0.1.0 is tagged they become
-     .../compare/v0.1.0...HEAD and .../releases/tag/v0.1.0 respectively — the
-     docs-links workflow checks every URL in this file on every push, so a link to a
-     release that has not been cut yet is a build failure, not a placeholder. -->
+<!-- v0.1.0 is tagged and released, so these are now the canonical forms the note
+     here previously described as pending. The docs-links workflow checks every URL in
+     this file on every push, which is why they could not be written before the release
+     existed: a link to a release that has not been cut is a build failure, not a
+     placeholder. The next version's entry follows the same order — release first,
+     then the link. -->
 
-[Unreleased]: https://github.com/celikgo/GlowSky/commits/main
-[0.1.0]: https://github.com/celikgo/GlowSky/releases
+[Unreleased]: https://github.com/celikgo/GlowSky/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/celikgo/GlowSky/releases/tag/v0.1.0

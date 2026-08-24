@@ -13,11 +13,13 @@ from pathlib import Path
 
 import pytest
 
+import scripts.check_design_tokens as cdt
 from scripts.check_design_tokens import (
     CPK_TS,
     THEME_TS,
     TOKENS_CSS,
     check_contrast,
+    check_element_discriminability,
     check_parity,
     check_stated_ratios,
     composite,
@@ -287,7 +289,10 @@ def _theme(**tokens: str) -> dict[str, dict[str, str]]:
     return {"": {}, "dim": base}
 
 
-def test_a_palette_that_clears_every_floor_reports_nothing() -> None:
+def test_a_palette_that_clears_every_floor_reports_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cdt, "CPK_2D_INDISTINGUISHABLE", {})
     problems, _ = check_contrast(_theme(), {"CPK_2D": {"6": "#000000"}})
     assert problems == []
 
@@ -317,12 +322,73 @@ def test_a_new_element_colour_below_the_floor_must_publish_its_shortfall() -> No
     assert any("CPK_2D[30]" in p and "not listed" in p for p in problems)
 
 
-def test_a_published_shortfall_fails_only_if_it_gets_worse() -> None:
-    # Sulfur is 1.72:1 on white and stays. Moving the GROUND is what this catches.
+def test_a_published_shortfall_fails_only_if_it_gets_worse(monkeypatch: pytest.MonkeyPatch) -> None:
+    # CPK_2D_BELOW_FLOOR is empty today, because Avalon's worst case is 4.00:1.
+    # The mechanism still has to work for the day it is not.
+    monkeypatch.setattr(cdt, "CPK_2D_BELOW_FLOOR", {"16": 1.72})
+    monkeypatch.setattr(cdt, "CPK_2D_INDISTINGUISHABLE", {})
     ok, _ = check_contrast(_theme(), {"CPK_2D": {"16": "#cccc00"}})
     assert ok == []
+    # The colours never move, so a published shortfall getting worse means the
+    # GROUND moved underneath it.
     worse, _ = check_contrast(_theme(**{"--mol-canvas": "#ffff00"}), {"CPK_2D": {"16": "#cccc00"}})
     assert any("CPK_2D[16]" in p for p in worse)
+
+
+def test_nothing_in_the_shipped_palette_is_below_the_floor() -> None:
+    # The reason CPK_2D is Avalon rather than RDKit's familiar default.
+    assert cdt.CPK_2D_BELOW_FLOOR == {}
+
+
+# ---------------------------------------------------------------------------
+# Check 3b — two different elements that look the same.
+# ---------------------------------------------------------------------------
+
+
+def test_identical_colours_for_two_elements_are_caught(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Not a contrast problem: both clear the floor comfortably. It is still a
+    # depiction in which chlorine and bromine are the same mark.
+    monkeypatch.setattr(cdt, "CPK_2D_INDISTINGUISHABLE", {})
+    problems, _ = check_contrast(_theme(), {"CPK_2D": {"7": "#0000FF", "8": "#0000FF"}})
+    assert any("dE 0.0 apart" in p for p in problems)
+
+
+def test_a_published_collision_passes_but_is_still_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cdt, "CPK_2D_INDISTINGUISHABLE", {("17", "9"): 0.0})
+    report: list[str] = []
+    problems = check_element_discriminability({"9": "#007F00", "17": "#007F00"}, report)
+    assert problems == []
+    assert any("pub" in line and "0.0" in line for line in report)
+
+
+def test_a_published_collision_getting_closer_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cdt, "CPK_2D_INDISTINGUISHABLE", {("15", "53"): 23.5})
+    report: list[str] = []
+    problems = check_element_discriminability({"15": "#7F007F", "53": "#7F017F"}, report)
+    assert any("closer than the 23.5" in p for p in problems)
+
+
+def test_a_collision_that_no_longer_exists_must_be_removed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A stale entry is a published defect that is not real any more, which is
+    # its own kind of false claim.
+    monkeypatch.setattr(cdt, "CPK_2D_INDISTINGUISHABLE", {("9", "17"): 0.0})
+    problems = check_element_discriminability({"9": "#007F00", "17": "#FF0000"}, [])
+    assert any("remove the entry" in p for p in problems)
+
+
+def test_the_skeleton_elements_are_not_a_collision(monkeypatch: pytest.MonkeyPatch) -> None:
+    # H, C and the fallback are all black on purpose.
+    monkeypatch.setattr(cdt, "CPK_2D_INDISTINGUISHABLE", {})
+    assert check_element_discriminability({"-1": "#000000", "1": "#000000", "6": "#000000"}, []) == []
+
+
+def test_delta_e_matches_the_values_published_in_the_checker() -> None:
+    black, white = (0.0, 0.0, 0.0), (255.0, 255.0, 255.0)
+    assert cdt.delta_e(black, black) == pytest.approx(0.0)
+    # L* runs 0-100, so black to white is 100 with no chroma term.
+    assert cdt.delta_e(black, white) == pytest.approx(100.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------
@@ -368,3 +434,11 @@ def test_cpk_ts_still_exports_both_palettes_and_all_three_grounds() -> None:
     assert palettes["CPK_2D"]["8"].lower().startswith("#ff")
     assert palettes["CPK_3D"]["O"].lower().startswith("#ff")
     assert set(parse_cpk_grounds(CPK_TS.read_text(encoding="utf-8"))) == set(GROUNDS)
+
+
+def test_a_collision_entry_for_an_element_that_is_gone_is_caught(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cdt, "CPK_2D_INDISTINGUISHABLE", {("9", "17"): 0.0})
+    problems = check_element_discriminability({"9": "#007F00"}, [])
+    assert any("no longer defines Z=17" in p for p in problems)

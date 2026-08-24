@@ -44,7 +44,7 @@ literal, and the file says why in its header. Both tables are read out of RDKit
 ```python
 from rdkit.Chem.Draw import rdMolDraw2D
 d = rdMolDraw2D.MolDraw2DSVG(200, 200)
-d.drawOptions().useDefaultAtomPalette()   # -> CPK_2D
+d.drawOptions().useAvalonAtomPalette()    # -> CPK_2D
 d.drawOptions().useCDKAtomPalette()       # -> CPK_3D
 d.drawOptions().getAtomPalette()
 ```
@@ -58,7 +58,7 @@ light and a dark ground:**
 | palette | on white | on the dim surface |
 |---|---|---|
 | Jmol / CPK (the screen convention) | H **1.00:1**, S **1.07:1**, Cl **1.55:1** | worst case 2.11:1 |
-| RDKit 2D (the print convention) | worst case 1.72:1 | C/H **1.27:1**, N **1.92:1** |
+| Avalon (the print convention) | worst case 4.00:1 | C/H **1.27:1**, N **1.92:1** |
 
 Since the element colours cannot move, the ground is what stays put.
 `--mol-canvas` (2D) and `--viewer-canvas` (3D) are **identical in all three
@@ -98,23 +98,40 @@ depiction" placeholder. All of these are `var(--…)` and all of them must stay
 legible in every theme. `--viewer-surface` was the last raw hex in any `.tsx` —
 `#8b98a5`, `--text-secondary` restated as a JS string.
 
-## Published, not fixed
+## Two ways an element palette fails, and both are gated
 
-Four colours in `CPK_2D` fall below the 3:1 floor against `--mol-canvas`:
-sulfur 1.72:1, fluorine 1.97:1, chlorine 2.16:1, phosphorus 2.52:1.
+**Illegible** and **indistinguishable** are different defects, and a contrast
+floor only catches the first.
 
-They are **not adjusted**, and this is the repository's usual answer to an
-uncomfortable measurement — the same answer `docs/VALIDATION.md` gives about the
-1HSG re-docking benchmark. The colour is the element's identity; the identity is
-also carried by the atom symbol drawn beside it, so what is lost is some of the
-colour's legibility, not the information. RDKit's Avalon palette clears 3:1 for
-every element (minimum 4.00:1) by making the halogens one green and sulfur
-brown; that trade was measured and declined, because a chemist looking for
-yellow sulfur is the reason the colours exist.
+`CPK_2D` is RDKit's **Avalon** palette, not its familiar default. The default has
+yellow sulfur and cyan fluorine and four colours that are illegible on white
+(S 1.72:1, F 1.97:1, Cl 2.16:1, P 2.52:1). Avalon clears 3:1 everywhere, worst
+case oxygen at 4.00:1 — and pays for it in hue:
 
-`CPK_2D_BELOW_FLOOR` in `scripts/check_design_tokens.py` records the four
-ratios. A fifth element dropping below the floor fails. One of these four
-getting *worse* fails, and it means the ground moved, because the colours do not.
+| pair | CIE76 dE | |
+|---|---|---|
+| F / Cl / Br | **0.0** | byte-identical `#007F00` |
+| P vs I | 23.5 | both purple |
+
+Sulfur is brown here, not yellow. If that surprises you, that is the trade, and
+`cpk.ts` carries the reasoning: a 2D depiction draws the atom **symbol** as well,
+so identity is not lost — an F is labelled F — and colour is a redundant second
+channel that this palette spends to make the first one legible.
+
+Two ratchets in `scripts/check_design_tokens.py` keep both honest:
+
+- `CPK_2D_BELOW_FLOOR` — **empty**, and that is the mechanism working, not the
+  absence of one. An element added below 3:1 fails until somebody writes down its
+  number and why it is acceptable. A listed one getting *worse* also fails, and
+  means the ground moved, because the colours do not.
+- `CPK_2D_INDISTINGUISHABLE` — the four collisions above, with their measured dE.
+  A **fourth** element joining the green pile fails. A published collision
+  getting closer fails. An entry that stops being true must be removed, because a
+  published defect that no longer exists is its own false claim.
+
+If you need a fifth halogen, or an element in the purple range, you will hit the
+second ratchet. That is the point: pick a colour that separates, or publish the
+collision with its number.
 
 ## What an LLM must never infer here
 
@@ -167,6 +184,9 @@ Do not add these without deciding what the colour would mean:
   depiction is cached; without it the old SVG survives a theme change.
 - **Adjusting an element colour to make a contrast check pass.** The check is
   there to tell you the ground moved.
+- **Adding an element colour without checking it against the others.** Clearing
+  the contrast floor is half the job; a new green that nobody can tell from
+  chlorine is the other half, and the second ratchet will say so.
 
 ## Reference
 

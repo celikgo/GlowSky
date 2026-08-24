@@ -132,27 +132,43 @@ whose canvas was pinned light with the comment *"Ketcher's drawing surface is
 light by design."*
 
 Both tables are read out of RDKit 2026.03.5's own shipped palettes
-(`useDefaultAtomPalette()` and `useCDKAtomPalette()`), not transcribed.
+(`useAvalonAtomPalette()` and `useCDKAtomPalette()`), not transcribed.
 
-**Four element colours are below the 3:1 floor and are published, not fixed:**
+**Nothing ships below the 3:1 floor.** `CPK_2D` is RDKit's **Avalon** palette
+rather than its default, and that is a deliberate trade rather than a free win.
+The default is the familiar one — yellow sulfur, cyan fluorine, green chlorine —
+and four of its colours are illegible on white: sulfur 1.72:1, fluorine 1.97:1,
+chlorine 2.16:1, phosphorus 2.52:1. Avalon clears the floor for every element:
 
-| element | on `--mol-canvas` |
-|---|---|
-| sulfur | 1.72:1 |
-| fluorine | 1.97:1 |
-| chlorine | 2.16:1 |
-| phosphorus | 2.52:1 |
+| element | on `--mol-canvas` | | element | on `--mol-canvas` |
+|---|---|---|---|---|
+| C / H / default | 21.00:1 | | P | 9.51:1 |
+| N | 8.59:1 | | S | 8.04:1 |
+| O | **4.00:1** (worst) | | Cl | 5.20:1 |
+| F | 5.20:1 | | Br | 5.20:1 |
+| I | 13.84:1 | | | |
 
-They are not adjusted. The colour is the element's identity, and the identity is
-also carried by the atom symbol drawn beside it, so what is lost is some of the
-colour's legibility, not the information — WCAG 1.4.1 is satisfied, 1.4.11 is
-not, for those four. RDKit's Avalon palette clears 3:1 for every element
-(minimum 4.00:1) by making the halogens one green and sulfur brown; that trade
-was measured and declined, because a chemist looking for yellow sulfur is the
-reason the colours exist. `CPK_2D_BELOW_FLOOR` in
-`scripts/check_design_tokens.py` records the four ratios, so a fifth element
-dropping below the floor, or the ground moving underneath these four, fails a
-build.
+**What it costs, measured.** Avalon buys contrast by spending hue:
+
+| pair | CIE76 dE | |
+|---|---|---|
+| F / Cl / Br | **0.0** | byte-identical `#007F00` |
+| P vs I | 23.5 | both purple |
+
+So colour no longer separates one halogen from another, and sulfur is brown
+rather than the yellow a chemist expects. Element identity is not lost — a 2D
+depiction draws the atom **symbol** as well, so an F is labelled F, and colour is
+a redundant second channel. This palette trades some of that redundancy for a
+legible first one. It is an owner decision, recorded rather than presented as
+self-evident.
+
+Both failure modes are gated, so neither can quietly get worse.
+`CPK_2D_BELOW_FLOOR` is **empty**, and emptiness is the mechanism working rather
+than the absence of one: an element added below 3:1 fails until somebody writes
+down its number. `CPK_2D_INDISTINGUISHABLE` lists the four collisions above with
+their measured dE, so a *fourth* element joining the green pile fails a build,
+a published collision getting closer fails, and an entry that stops being true
+must be removed.
 
 ## 5. What the app does not encode in colour
 
@@ -182,7 +198,7 @@ not let you merge:
 | 1 | a raw colour literal under `apps/desktop/src` outside the palette and the element table, above the committed ceiling |
 | 1b | a `var(--token)` naming something nothing defines |
 | 2 | a token defined in one theme and missing from another; a colour in the shared `:root` block; a theme offered in the switcher with no block; a theme that moves a molecule ground |
-| 3 | a text or control pair below its WCAG floor; an element colour below the floor that is not published as such, or one of the four published ones getting worse |
+| 3 | a text or control pair below its WCAG floor; an element colour below the floor that is not published as such; two elements closer than dE 25 that are not published as such, or a published collision getting closer |
 | 4 | a contrast ratio written in a `tokens.css` comment that is not what that colour measures |
 
 `tests/test_design_tokens.py` runs the same checker against inputs that should

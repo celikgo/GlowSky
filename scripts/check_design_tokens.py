@@ -29,6 +29,7 @@ Exit: 0 clean, 1 on any violation.
 
 from __future__ import annotations
 
+import math
 import re
 import sys
 from dataclasses import dataclass
@@ -86,6 +87,28 @@ def composite(
         g * a + bg[1] * (1 - a),
         b * a + bg[2] * (1 - a),
     )
+
+
+def _to_lab(rgb: tuple[float, float, float]) -> tuple[float, float, float]:
+    """sRGB -> CIE L*a*b* (D65), so two element colours can be compared the way
+    an eye compares them rather than the way a hex string compares."""
+    r, g, b = (_srgb_to_linear(c) for c in rgb)
+    x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047
+    y = r * 0.2126 + g * 0.7152 + b * 0.0722
+    z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883
+
+    def f(t: float) -> float:
+        return t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+
+    fx, fy, fz = f(x), f(y), f(z)
+    return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
+
+
+def delta_e(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    """CIE76 colour difference. Roughly: under ~2.3 is imperceptible, under ~25
+    is 'the same colour family' to someone scanning rather than comparing."""
+    la, lb = _to_lab(a), _to_lab(b)
+    return math.sqrt(sum((x - y) ** 2 for x, y in zip(la, lb, strict=True)))
 
 
 _HEX_RE = re.compile(r"^#([0-9a-fA-F]{3,8})$")
@@ -430,16 +453,41 @@ CONTRAST_OBLIGATIONS: tuple[Obligation, ...] = (
 )
 
 # Element colours are chemical identity and are never adjusted to pass a
-# contrast floor. These four are below it against --mol-canvas, measured, and
-# published in cpk.ts and docs/14-design-system.md rather than corrected. The
-# check still runs on them: it fails if a listed element gets WORSE, and it
-# fails if an element not listed here drops below the floor.
-CPK_2D_BELOW_FLOOR: dict[str, float] = {
-    "9": 1.97,  # F
-    "15": 2.52,  # P
-    "16": 1.72,  # S
-    "17": 2.16,  # Cl
+# contrast floor. If one is below the floor it is published here, with the
+# measured ratio, rather than corrected — the same answer docs/VALIDATION.md
+# gives about the 1HSG benchmark. The check fails if a listed element gets
+# WORSE, and fails if an element NOT listed here drops below the floor.
+#
+# Deliberately empty: CPK_2D is RDKit's Avalon palette, whose worst case is
+# oxygen at 4.00:1. Emptiness is the point of the mechanism, not the absence of
+# one — an element added below 3:1 fails here until somebody writes down its
+# number and why it is acceptable.
+CPK_2D_BELOW_FLOOR: dict[str, float] = {}
+
+# The other way an element palette fails a chemist: two DIFFERENT elements that
+# look the same. Avalon buys its contrast with hue, so the halogens collapse to
+# one green. That is a real cost and it is gated rather than merely mentioned,
+# because the failure mode it invites is a fourth element quietly joining the
+# pile. Identity is still carried by the atom symbol the depiction draws, which
+# is why these are acceptable at all.
+#
+# Keys are sorted atomic-number pairs; values are the measured CIE76 dE.
+CPK_2D_INDISTINGUISHABLE: dict[tuple[str, str], float] = {
+    ("17", "9"): 0.0,  # Cl / F  — identical #007F00
+    ("35", "9"): 0.0,  # Br / F  — identical
+    ("17", "35"): 0.0,  # Cl / Br — identical
+    ("15", "53"): 23.5,  # P / I  — both purple
 }
+
+# Below this, two element colours are close enough that a reader scanning a
+# structure will not reliably tell them apart. 25 is the conventional "clearly
+# different colours" threshold for CIE76; anything under it must be published
+# in CPK_2D_INDISTINGUISHABLE above.
+ELEMENT_DELTA_E_FLOOR = 25.0
+
+# Hydrogen and carbon are the skeleton and are drawn in the same colour on
+# purpose, so they are not a collision.
+SKELETON_ELEMENTS = frozenset({"-1", "1", "6"})
 
 
 def _colour_of(token: str, decls: dict[str, str]) -> tuple[float, float, float, float] | None:
@@ -522,7 +570,62 @@ def check_contrast(
                     f"{NONTEXT_FLOOR}:1 floor and not listed in CPK_2D_BELOW_FLOOR. Either the "
                     f"ground moved, or a new element colour needs its shortfall published"
                 )
+
+    problems += check_element_discriminability(cpk.get("CPK_2D", {}), report)
     return problems, report
+
+
+def check_element_discriminability(palette: dict[str, str], report: list[str]) -> list[str]:
+    """Two different elements drawn in the same colour is the other way an
+    element palette fails, and it is the one a contrast floor does not catch."""
+    problems: list[str] = []
+    elements = sorted(z for z in palette if z not in SKELETON_ELEMENTS)
+    published = dict(CPK_2D_INDISTINGUISHABLE)
+    report.append("\n  [CPK_2D element pairs closer than dE " f"{ELEMENT_DELTA_E_FLOOR}]")
+    found = False
+    for i, a in enumerate(elements):
+        for b in elements[i + 1 :]:
+            colour_a, colour_b = parse_colour(palette[a]), parse_colour(palette[b])
+            if colour_a is None or colour_b is None:
+                continue
+            distance = delta_e(colour_a[:3], colour_b[:3])
+            if distance >= ELEMENT_DELTA_E_FLOOR:
+                continue
+            found = True
+            key = tuple(sorted((a, b)))
+            was = published.pop(key, None)  # type: ignore[arg-type]
+            if was is None:
+                report.append(f"    FAIL {distance:5.1f}  Z={a} / Z={b}")
+                problems.append(
+                    f"CPK_2D[{a}] and CPK_2D[{b}] are dE {distance:.1f} apart, under the "
+                    f"{ELEMENT_DELTA_E_FLOOR} floor, and are not listed in "
+                    f"CPK_2D_INDISTINGUISHABLE. Two elements a reader cannot tell apart is "
+                    f"a defect even when both clear the contrast floor — publish it with "
+                    f"its number, or pick a colour that separates them"
+                )
+            else:
+                report.append(f"    pub  {distance:5.1f}  Z={a} / Z={b} (published at {was})")
+                if distance < was - 0.05:
+                    problems.append(
+                        f"CPK_2D[{a}] and CPK_2D[{b}] are dE {distance:.1f} apart, closer "
+                        f"than the {was} published in check_design_tokens.py"
+                    )
+    for key in published:
+        gone = [z for z in key if z not in palette]
+        if gone:
+            problems.append(
+                f"CPK_2D_INDISTINGUISHABLE lists {key}, but CPK_2D no longer defines "
+                f"{', '.join(f'Z={z}' for z in gone)}; remove the entry"
+            )
+        else:
+            problems.append(
+                f"CPK_2D_INDISTINGUISHABLE lists {key} but those two are now far enough "
+                f"apart; remove the entry rather than leaving a published defect that no "
+                f"longer exists"
+            )
+    if not found:
+        report.append("    none — every element pair is distinguishable")
+    return problems
 
 
 # ---------------------------------------------------------------------------

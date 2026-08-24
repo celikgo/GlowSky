@@ -133,6 +133,23 @@ If you need a fifth halogen, or an element in the purple range, you will hit the
 second ratchet. That is the point: pick a colour that separates, or publish the
 collision with its number.
 
+**`CPK_3D` is gated the same way, and comes out the other way round.** The Jmol
+table has no collisions, and two elements below the floor on `--viewer-canvas`
+that stay there — bromine 2.68:1 and iodine 2.42:1. No ground fixes them: the
+best achievable worst-case over every grey is 2.69:1 at pure black. The one
+alternative 3Dmol ships (`rasmol`) still fails bromine and adds five collisions.
+
+**Do not trade hue for contrast in `CPK_3D` the way `CPK_2D` does.** A 3D scene
+draws no atom labels, so colour is the only identity channel there; in the 2D
+depiction it is a redundant second one next to the atom symbol, which is the
+whole reason Avalon's halogen collision is tolerable. `CPK_3D_INDISTINGUISHABLE`
+is empty and must stay empty.
+
+The 3:1 floor is applied to 3D as a conservative proxy, not because WCAG 1.4.11
+is in scope — a lit sphere with a specular highlight and depth cues is not a
+flat graphic, so the two published numbers are an upper bound on the problem
+rather than a description of it.
+
 ## What an LLM must never infer here
 
 The house rule is that LLMs plan and explain while deterministic tools compute,

@@ -471,13 +471,38 @@ CPK_2D_BELOW_FLOOR: dict[str, float] = {}
 # pile. Identity is still carried by the atom symbol the depiction draws, which
 # is why these are acceptable at all.
 #
-# Keys are sorted atomic-number pairs; values are the measured CIE76 dE.
+# Keys are sorted element-key pairs; values are the measured CIE76 dE.
 CPK_2D_INDISTINGUISHABLE: dict[tuple[str, str], float] = {
     ("17", "9"): 0.0,  # Cl / F  — identical #007F00
     ("35", "9"): 0.0,  # Br / F  — identical
     ("17", "35"): 0.0,  # Cl / Br — identical
     ("15", "53"): 23.5,  # P / I  — both purple
 }
+
+# CPK_3D, the Jmol table, against --viewer-canvas. Two elements are below the
+# floor and are published rather than fixed, because there is nowhere to move
+# them to: a sweep of every grey ground puts the best achievable worst-case at
+# 2.69 (pure black), so NO ground clears this table. The one alternative 3Dmol
+# ships, its `rasmol` table, still fails bromine at 2.67 AND introduces five
+# collisions including boron/chlorine identical — a bad trade in a medium where
+# colour is the only identity channel, because a 3D scene draws no atom labels.
+#
+# The 3:1 floor is applied here as a CONSERVATIVE PROXY, not because WCAG 1.4.11
+# is in scope. A 3D atom is a lit sphere with a specular highlight, an outline
+# and depth cues, so its rendered pixels span a range around the base colour and
+# a flat base-vs-ground ratio understates what a viewer can see. Holding it to
+# the flat-graphics standard anyway means these two numbers are an upper bound
+# on the problem rather than a description of it.
+CPK_3D_BELOW_FLOOR: dict[str, float] = {
+    "Br": 2.68,
+    "I": 2.42,
+}
+
+# None, and it matters more here than in 2D: the 2D depiction draws the atom
+# symbol beside every heteroatom, so colour there is a redundant channel. A 3D
+# scene draws no labels at all. If two elements collide in CPK_3D, the
+# information is gone rather than merely harder to read.
+CPK_3D_INDISTINGUISHABLE: dict[tuple[str, str], float] = {}
 
 # Below this, two element colours are close enough that a reader scanning a
 # structure will not reliably tell them apart. 25 is the conventional "clearly
@@ -487,7 +512,7 @@ ELEMENT_DELTA_E_FLOOR = 25.0
 
 # Hydrogen and carbon are the skeleton and are drawn in the same colour on
 # purpose, so they are not a collision.
-SKELETON_ELEMENTS = frozenset({"-1", "1", "6"})
+SKELETON_ELEMENTS = frozenset({"-1", "1", "6", "H", "C"})
 
 
 def _colour_of(token: str, decls: dict[str, str]) -> tuple[float, float, float, float] | None:
@@ -533,55 +558,98 @@ def check_contrast(
                     f"{ob.floor}:1 floor for {ob.where}"
                 )
 
-    # Element colours, against the ground they are defined for. The ground is
+    # Element colours, against the ground each is defined for. The grounds are
     # identical in every theme (check 2 enforces that), so measure once.
     any_theme = next(d for t, d in themes.items() if t)
-    canvas = _colour_of("--mol-canvas", {**shared, **any_theme})
-    if canvas is None:
-        problems.append("--mol-canvas is not defined; element colours have no ground to be checked against")
-        return problems, report
+    decls = {**shared, **any_theme}
+    for name, ground_token, below in (
+        ("CPK_2D", "--mol-canvas", CPK_2D_BELOW_FLOOR),
+        ("CPK_3D", "--viewer-canvas", CPK_3D_BELOW_FLOOR),
+    ):
+        ground = _colour_of(ground_token, decls)
+        if ground is None:
+            problems.append(
+                f"{ground_token} is not defined; {name}'s colours have no ground "
+                f"to be checked against"
+            )
+            continue
+        problems += check_element_contrast(name, cpk.get(name, {}), ground_token, ground, below, report)
 
-    report.append("\n  [CPK_2D on --mol-canvas]")
-    for element, hexv in sorted(cpk.get("CPK_2D", {}).items(), key=lambda kv: int(kv[0])):
+    problems += check_element_discriminability("CPK_2D", cpk.get("CPK_2D", {}), report)
+    problems += check_element_discriminability("CPK_3D", cpk.get("CPK_3D", {}), report)
+    return problems, report
+
+
+def _element_sort_key(item: tuple[str, str]) -> tuple[int, int | str]:
+    """CPK_2D is keyed by atomic number, CPK_3D by element symbol."""
+    key = item[0]
+    try:
+        return (0, int(key))
+    except ValueError:
+        return (1, key)
+
+
+def check_element_contrast(
+    name: str,
+    palette: dict[str, str],
+    ground_token: str,
+    ground: tuple[float, float, float, float],
+    below_floor: dict[str, float],
+    report: list[str],
+) -> list[str]:
+    """Every element colour against the ground its palette is defined for.
+    A shortfall is published with its number, never corrected — the colours are
+    chemical identity, so one getting worse means the GROUND moved."""
+    problems: list[str] = []
+    published = dict(below_floor)
+    report.append(f"\n  [{name} on {ground_token}]")
+    for element, hexv in sorted(palette.items(), key=_element_sort_key):
         colour = parse_colour(hexv)
         if colour is None:
-            problems.append(f"CPK_2D[{element}] = {hexv} is not a colour")
+            problems.append(f"{name}[{element}] = {hexv} is not a colour")
             continue
-        ratio = contrast_ratio(colour[:3], canvas[:3])
-        published = CPK_2D_BELOW_FLOOR.get(element)
-        if published is not None:
-            mark = "pub " if ratio >= published - 0.005 else "FAIL"
+        ratio = contrast_ratio(colour[:3], ground[:3])
+        was = published.pop(element, None)
+        if was is not None:
+            mark = "pub " if ratio >= was - 0.005 else "FAIL"
             report.append(
                 f"    {mark} {ratio:5.2f} "
-                f"(published below the {NONTEXT_FLOOR}:1 floor at {published})  Z={element}"
+                f"(published below the {NONTEXT_FLOOR}:1 floor at {was})  {element}"
             )
-            if ratio < published - 0.005:
+            if ratio < was - 0.005:
                 problems.append(
-                    f"CPK_2D[{element}] is {ratio:.2f}:1 on --mol-canvas, worse than the "
-                    f"{published}:1 published in cpk.ts — element colours are not adjusted, so "
+                    f"{name}[{element}] is {ratio:.2f}:1 on {ground_token}, worse than the "
+                    f"{was}:1 published in cpk.ts — element colours are not adjusted, so "
                     f"this means the GROUND moved"
                 )
         else:
             mark = "ok " if ratio >= NONTEXT_FLOOR else "FAIL"
-            report.append(f"    {mark} {ratio:5.2f} (>= {NONTEXT_FLOOR})  Z={element}")
+            report.append(f"    {mark} {ratio:5.2f} (>= {NONTEXT_FLOOR})  {element}")
             if ratio < NONTEXT_FLOOR:
                 problems.append(
-                    f"CPK_2D[{element}] is {ratio:.2f}:1 on --mol-canvas, below the "
-                    f"{NONTEXT_FLOOR}:1 floor and not listed in CPK_2D_BELOW_FLOOR. Either the "
-                    f"ground moved, or a new element colour needs its shortfall published"
+                    f"{name}[{element}] is {ratio:.2f}:1 on {ground_token}, below the "
+                    f"{NONTEXT_FLOOR}:1 floor and not listed in {name}_BELOW_FLOOR. Either "
+                    f"the ground moved, or a new element colour needs its shortfall published"
                 )
+    for element in published:
+        problems.append(
+            f"{name}_BELOW_FLOOR lists {element}, but {name} no longer defines it; "
+            f"remove the entry"
+        )
+    return problems
 
-    problems += check_element_discriminability(cpk.get("CPK_2D", {}), report)
-    return problems, report
 
-
-def check_element_discriminability(palette: dict[str, str], report: list[str]) -> list[str]:
+def check_element_discriminability(
+    name: str, palette: dict[str, str], report: list[str]
+) -> list[str]:
     """Two different elements drawn in the same colour is the other way an
     element palette fails, and it is the one a contrast floor does not catch."""
     problems: list[str] = []
     elements = sorted(z for z in palette if z not in SKELETON_ELEMENTS)
-    published = dict(CPK_2D_INDISTINGUISHABLE)
-    report.append("\n  [CPK_2D element pairs closer than dE " f"{ELEMENT_DELTA_E_FLOOR}]")
+    published = dict(
+        CPK_2D_INDISTINGUISHABLE if name == "CPK_2D" else CPK_3D_INDISTINGUISHABLE
+    )
+    report.append(f"\n  [{name} element pairs closer than dE {ELEMENT_DELTA_E_FLOOR}]")
     found = False
     for i, a in enumerate(elements):
         for b in elements[i + 1 :]:
@@ -595,31 +663,31 @@ def check_element_discriminability(palette: dict[str, str], report: list[str]) -
             key = tuple(sorted((a, b)))
             was = published.pop(key, None)  # type: ignore[arg-type]
             if was is None:
-                report.append(f"    FAIL {distance:5.1f}  Z={a} / Z={b}")
+                report.append(f"    FAIL {distance:5.1f}  {a} / {b}")
                 problems.append(
-                    f"CPK_2D[{a}] and CPK_2D[{b}] are dE {distance:.1f} apart, under the "
+                    f"{name}[{a}] and {name}[{b}] are dE {distance:.1f} apart, under the "
                     f"{ELEMENT_DELTA_E_FLOOR} floor, and are not listed in "
-                    f"CPK_2D_INDISTINGUISHABLE. Two elements a reader cannot tell apart is "
+                    f"{name}_INDISTINGUISHABLE. Two elements a reader cannot tell apart is "
                     f"a defect even when both clear the contrast floor — publish it with "
                     f"its number, or pick a colour that separates them"
                 )
             else:
-                report.append(f"    pub  {distance:5.1f}  Z={a} / Z={b} (published at {was})")
+                report.append(f"    pub  {distance:5.1f}  {a} / {b} (published at {was})")
                 if distance < was - 0.05:
                     problems.append(
-                        f"CPK_2D[{a}] and CPK_2D[{b}] are dE {distance:.1f} apart, closer "
+                        f"{name}[{a}] and {name}[{b}] are dE {distance:.1f} apart, closer "
                         f"than the {was} published in check_design_tokens.py"
                     )
     for key in published:
         gone = [z for z in key if z not in palette]
         if gone:
             problems.append(
-                f"CPK_2D_INDISTINGUISHABLE lists {key}, but CPK_2D no longer defines "
+                f"{name}_INDISTINGUISHABLE lists {key}, but {name} no longer defines "
                 f"{', '.join(f'Z={z}' for z in gone)}; remove the entry"
             )
         else:
             problems.append(
-                f"CPK_2D_INDISTINGUISHABLE lists {key} but those two are now far enough "
+                f"{name}_INDISTINGUISHABLE lists {key} but those two are now far enough "
                 f"apart; remove the entry rather than leaving a published defect that no "
                 f"longer exists"
             )

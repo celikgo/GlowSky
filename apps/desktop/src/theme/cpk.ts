@@ -103,6 +103,29 @@ export const CPK_2D: ElementPalette = Object.freeze({
  * passing it explicitly means the 3D viewer's element colours are stated in
  * this repository rather than left implicit inside a vendored bundle, which is
  * what let the 2D and 3D views drift apart in the first place.
+ *
+ * TWO ELEMENTS ARE BELOW THE 3:1 FLOOR against --viewer-canvas and stay there:
+ * bromine 2.68:1 and iodine 2.42:1, both dark colours on a dark ground. Unlike
+ * the 2D case there is nowhere to move them to — a sweep of every grey ground
+ * puts the best achievable worst-case at 2.69:1, at pure black, so NO ground
+ * clears this table. Pure black would buy 0.27 and cost a black rectangle
+ * inside a themed card, which is not a trade worth making for a number that
+ * still fails.
+ *
+ * The one alternative 3Dmol ships, its `rasmol` table, is worse on both counts:
+ * it still fails bromine (2.67:1) and it introduces five collisions, including
+ * boron and chlorine at exactly the same green. That is a bad trade here in a
+ * way it was not for CPK_2D, because a 3D scene draws NO ATOM LABELS — colour
+ * is the only identity channel, so two elements sharing one loses the
+ * information rather than making it harder to read. It is also why
+ * CPK_3D_INDISTINGUISHABLE is empty and must stay that way.
+ *
+ * The 3:1 floor is applied to 3D as a conservative proxy rather than because
+ * WCAG 1.4.11 is in scope: a 3D atom is a lit sphere with a specular highlight
+ * and depth cues, so its rendered pixels span a range around the base colour
+ * and a flat base-vs-ground ratio understates what a viewer can see. Holding it
+ * to the flat-graphics standard anyway makes these two numbers an upper bound
+ * on the problem rather than a description of it.
  */
 export const CPK_3D: ElementPalette = Object.freeze({
   H: "#FFFFFF",

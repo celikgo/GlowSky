@@ -170,6 +170,38 @@ their measured dE, so a *fourth* element joining the green pile fails a build,
 a published collision getting closer fails, and an entry that stops being true
 must be removed.
 
+### The 3D table
+
+`CPK_3D` — the Jmol table, on `--viewer-canvas` — is gated the same way, with
+the opposite result: **no collisions, and two elements below the floor that
+stay there.**
+
+| | |
+|---|---|
+| bromine | 2.68:1 |
+| iodine | 2.42:1 |
+
+There is nowhere to move them. A sweep of every grey ground puts the best
+achievable worst-case at **2.69:1, at pure black** — so no ground clears this
+table, and pure black would buy 0.27 while costing a black rectangle inside a
+themed card. The one alternative 3Dmol ships, its `rasmol` table, still fails
+bromine (2.67:1) *and* introduces five collisions including boron and chlorine
+at the same green.
+
+That trade is worse here than the equivalent one was in 2D, and the reason is
+worth stating: **a 3D scene draws no atom labels.** In the 2D depiction colour
+is a redundant second channel next to the atom symbol, which is what made
+Avalon's halogen collision acceptable. In 3D colour is the *only* identity
+channel, so a collision loses the information rather than making it harder to
+read. `CPK_3D_INDISTINGUISHABLE` is empty and must stay that way.
+
+The 3:1 floor is applied to 3D as a **conservative proxy**, not because WCAG
+1.4.11 is in scope. A 3D atom is a lit sphere with a specular highlight and
+depth cues, so its rendered pixels span a range around the base colour and a
+flat base-vs-ground ratio understates what a viewer can see. Holding it to the
+flat-graphics standard anyway makes these two numbers an upper bound on the
+problem rather than a description of it.
+
 ## 5. What the app does not encode in colour
 
 Worth stating, because a reader of §3 may assume more is colour-coded than is:
@@ -198,7 +230,7 @@ not let you merge:
 | 1 | a raw colour literal under `apps/desktop/src` outside the palette and the element table, above the committed ceiling |
 | 1b | a `var(--token)` naming something nothing defines |
 | 2 | a token defined in one theme and missing from another; a colour in the shared `:root` block; a theme offered in the switcher with no block; a theme that moves a molecule ground |
-| 3 | a text or control pair below its WCAG floor; an element colour below the floor that is not published as such; two elements closer than dE 25 that are not published as such, or a published collision getting closer |
+| 3 | a text or control pair below its WCAG floor; an element colour in **either** palette below the floor that is not published as such; two elements closer than dE 25 that are not published as such; a published shortfall or collision getting worse; a published entry naming an element the palette no longer defines |
 | 4 | a contrast ratio written in a `tokens.css` comment that is not what that colour measures |
 
 `tests/test_design_tokens.py` runs the same checker against inputs that should

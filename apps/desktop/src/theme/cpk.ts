@@ -33,18 +33,29 @@
  *     d.drawOptions().useCDKAtomPalette()       # -> CPK_3D
  *     d.drawOptions().getAtomPalette()
  *
- * KNOWN, PUBLISHED, NOT FIXED. Four colours in CPK_2D fall below 3:1 against
- * white: sulfur 1.72:1, fluorine 1.97:1, chlorine 2.16:1, phosphorus 2.52:1.
- * They are not adjusted. The colour is the element's identity, and the
- * identity is also carried by the atom symbol drawn beside it, so what is lost
- * is some of the colour's legibility, not the information (WCAG 1.4.1 is
- * satisfied; 1.4.11 is not, for those four). RDKit's Avalon palette clears
- * 3:1 for every element — minimum 4.00:1 — by making the halogens one green
- * and sulfur brown; that trade was measured and declined, because a chemist
- * looking for yellow sulfur is the reason the colours exist. The four ratios
- * are gated by `CPK_2D_BELOW_FLOOR` in scripts/check_design_tokens.py, so a
- * fifth element dropping below the floor fails a build. See
- * `docs/14-design-system.md` §4 and `.claude/skills/rendering-molecules`.
+ * WHY CPK_2D IS AVALON AND NOT RDKit's DEFAULT. The default 2D palette is the
+ * familiar one — yellow sulfur, cyan fluorine, green chlorine — and four of its
+ * colours are illegible on white: sulfur 1.72:1, fluorine 1.97:1, chlorine
+ * 2.16:1, phosphorus 2.52:1, all below the 3:1 floor. Avalon clears the floor
+ * for every element, minimum 4.00:1 at oxygen.
+ *
+ * WHAT THAT COSTS, MEASURED. Avalon buys contrast by spending hue, and the bill
+ * is specific: fluorine, chlorine and bromine are the SAME green, #007F00 —
+ * byte-identical, CIE76 dE 0.0. Phosphorus and iodine are both purple, dE 23.5.
+ * So colour no longer separates one halogen from another, and a chemist
+ * scanning for "the green one" now has three candidates.
+ *
+ * Element identity is not lost, because a 2D depiction draws the atom SYMBOL as
+ * well: an F is labelled F. Colour here is a redundant second channel, and this
+ * palette trades some of that redundancy for a legible first one. That is a
+ * real trade with a real cost, and it is an owner decision recorded here rather
+ * than a self-evident improvement.
+ *
+ * Both failure modes are gated in scripts/check_design_tokens.py, so neither can
+ * quietly get worse: CPK_2D_BELOW_FLOOR (now empty — nothing ships below 3:1)
+ * and CPK_2D_INDISTINGUISHABLE, which lists the collisions above so that a
+ * FOURTH element joining the green pile fails a build instead of passing one.
+ * See `docs/14-design-system.md` §4 and `.claude/skills/rendering-molecules`.
  */
 
 /**
@@ -66,22 +77,24 @@ export const MOL_LABEL = "#536471";
 export type ElementPalette = Readonly<Record<string, string>>;
 
 /**
- * The print/white-ground rendering — RDKit's default 2D palette.
- * Used by MoleculeStructure for depictions drawn on `--mol-canvas` (white in
- * every theme). `"-1"` is RDKit's key for "any element not listed".
+ * The print/white-ground rendering — RDKit's Avalon 2D palette
+ * (`useAvalonAtomPalette()`), chosen over RDKit's default because every colour
+ * in it clears 3:1 against white. Used by MoleculeStructure for depictions drawn
+ * on `--mol-canvas` (white in every theme). `"-1"` is RDKit's key for "any
+ * element not listed". Ratios are against `--mol-canvas`.
  */
 export const CPK_2D: ElementPalette = Object.freeze({
   "-1": "#000000", // default / unlisted element
-  "1": "#000000", // H  — drawn as part of the skeleton, see the note below
+  "1": "#000000", // H  — drawn as part of the skeleton, same as carbon
   "6": "#000000", // C  — the skeleton; bonds inherit it
-  "7": "#0000FF", // N   8.59:1 on white
-  "8": "#FF0000", // O   4.00:1
-  "9": "#33CCCC", // F   1.97:1  <- below the 3:1 floor, published, see the header
-  "15": "#FF8000", // P  2.52:1  <- below the floor
-  "16": "#CCCC00", // S  1.72:1  <- below the floor
-  "17": "#00CD00", // Cl 2.16:1  <- below the floor
-  "35": "#804C1A", // Br  7.08:1
-  "53": "#A11FF0", // I   5.29:1
+  "7": "#0000FF", // N   8.59:1  blue
+  "8": "#FF0000", // O   4.00:1  red — the palette's worst case
+  "9": "#007F00", // F   5.20:1  green, shared with Cl and Br — see the header
+  "15": "#7F007F", // P  9.51:1  purple, close to I (dE 23.5)
+  "16": "#7F3F00", // S  8.04:1  brown, NOT the familiar yellow — see the header
+  "17": "#007F00", // Cl 5.20:1  green, shared with F and Br
+  "35": "#007F00", // Br 5.20:1  green, shared with F and Cl
+  "53": "#3F007F", // I  13.84:1 dark purple
 });
 
 /**

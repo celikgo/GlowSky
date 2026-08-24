@@ -40,7 +40,9 @@ describe("element colours are chemical data, not theme", () => {
 
   it("hands RDKit the CPK palette, not a lightened one", () => {
     const palette = drawOptionsUnder("dim").atomColourPalette as Record<string, number[]>;
-    // Oxygen red, nitrogen blue, sulfur yellow — the three a chemist reads first.
+    // Oxygen red and nitrogen blue, the two a chemist reads first. Sulfur is
+    // brown rather than the familiar yellow in this palette — see cpk.ts for
+    // why that trade was taken; the test asserts the constant, not a hue.
     expect(palette["8"]).toEqual(hexToRgbFloat(CPK_2D["8"]));
     expect(palette["7"]).toEqual(hexToRgbFloat(CPK_2D["7"]));
     expect(palette["16"]).toEqual(hexToRgbFloat(CPK_2D["16"]));

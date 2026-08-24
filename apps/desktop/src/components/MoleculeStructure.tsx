@@ -1,37 +1,20 @@
 import { useMemo } from "react";
 import { useRDKit } from "../hooks/useRDKit";
-
-// Dark-mode depiction: transparent background + a light atom palette. Bonds inherit
-// their atoms' colors, so a light carbon (#F2F7F7) yields a light skeleton; heteroatoms
-// are lightened so they stay legible on the Dim surface. Colors are RGB floats 0–1.
-const LIGHT: [number, number, number] = [0.95, 0.97, 0.97]; // ~ var(--text)
-const DARK_DRAW_OPTIONS = {
-  backgroundColour: [0, 0, 0, 0], // transparent
-  symbolColour: [0.95, 0.97, 0.97, 1],
-  legendColour: [0.55, 0.6, 0.65, 1],
-  annotationColour: [0.55, 0.6, 0.65, 1],
-  bondLineWidth: 1.1,
-  atomColourPalette: {
-    "-1": LIGHT, // default / fallback
-    "0": LIGHT,
-    "1": LIGHT, // H
-    "6": LIGHT, // C  -> light bonds
-    "7": [0.42, 0.64, 1.0], // N
-    "8": [1.0, 0.45, 0.45], // O
-    "9": [0.35, 0.85, 0.5], // F
-    "15": [1.0, 0.6, 0.3], // P
-    "16": [0.95, 0.8, 0.25], // S
-    "17": [0.35, 0.85, 0.5], // Cl
-    "35": [0.8, 0.5, 0.35], // Br
-    "53": [0.7, 0.5, 0.95], // I
-  },
-};
+import { useTheme } from "../hooks/useTheme";
+import { CPK_2D_RDKIT, MOL_CANVAS, MOL_LABEL, hexToRgbFloat } from "../theme/cpk";
+import { readToken } from "../theme/theme";
 
 /**
- * Render a 2D depiction of a SMILES string with RDKit-JS, drawn for dark mode
- * (light bonds on a transparent background — see DARK_DRAW_OPTIONS). Invalid structures
- * (shouldn't happen for firewalled candidates, but might for free-typed input) degrade
- * to a small placeholder rather than throwing.
+ * A 2D depiction of a SMILES string, drawn with RDKit-JS.
+ *
+ * The atom colours are CPK and do not change with the theme — see
+ * `src/theme/cpk.ts` for why that is a chemistry rule and not a style one, and
+ * why it forces the drawing surface to stay light in every theme too. What
+ * does follow the theme is everything around the drawing: the card, the
+ * border, the loading placeholder and the "no depiction" state.
+ *
+ * Invalid structures (shouldn't happen for firewalled candidates, but might
+ * for free-typed input) degrade to a small placeholder rather than throwing.
  */
 export function MoleculeStructure({
   smiles,
@@ -43,6 +26,9 @@ export function MoleculeStructure({
   height?: number;
 }) {
   const rdkit = useRDKit();
+  // Subscribed so the depiction is redrawn when the theme changes. The atom
+  // colours are the same either way; --mol-label is a token and could move.
+  const theme = useTheme();
 
   const svg = useMemo(() => {
     if (!rdkit) return null;
@@ -50,11 +36,26 @@ export function MoleculeStructure({
     if (!mol) return null;
     try {
       if (!mol.is_valid()) return null;
-      return mol.get_svg_with_highlights(JSON.stringify({ width, height, ...DARK_DRAW_OPTIONS }));
+      // readToken() is empty under vitest, where CSS is not processed; cpk.ts
+      // holds the same two values and CI fails if they disagree with the tokens.
+      const label = hexToRgbFloat(readToken("--mol-label") || MOL_LABEL);
+      const canvas = hexToRgbFloat(readToken("--mol-canvas") || MOL_CANVAS);
+      return mol.get_svg_with_highlights(
+        JSON.stringify({
+          width,
+          height,
+          backgroundColour: [...canvas, 1],
+          // Not an element colour: the legend and any atom annotations.
+          legendColour: [...label, 1],
+          annotationColour: [...label, 1],
+          bondLineWidth: 1.1,
+          atomColourPalette: CPK_2D_RDKIT,
+        }),
+      );
     } finally {
       mol.delete(); // free the WASM-side molecule
     }
-  }, [rdkit, smiles, width, height]);
+  }, [rdkit, smiles, width, height, theme]);
 
   if (!rdkit) {
     return <div className="molstruct molstruct--loading" style={{ height }} />;
@@ -68,7 +69,7 @@ export function MoleculeStructure({
   }
   return (
     <div
-      className="molstruct"
+      className="molstruct molstruct--drawn"
       style={{ height }}
       // RDKit-generated SVG; the input is a SMILES string, output is sanitized vector markup.
       dangerouslySetInnerHTML={{ __html: svg }}

@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../lib/api";
-import { loadMol3D, SURFACE, type Mol3DViewer } from "../lib/mol3d";
+import {
+  elementColorscheme,
+  loadMol3D,
+  viewerBackground,
+  type Mol3DViewer,
+} from "../lib/mol3d";
+import { useTheme } from "../hooks/useTheme";
 
 /**
  * Interactive 3D structure viewer. Fetches a single MMFF-minimized conformer (MOL block
@@ -21,6 +27,9 @@ export function Molecule3D({
   const [error, setError] = useState<string | null>(null);
   const [energy, setEnergy] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  // The WebGL canvas cannot inherit a CSS background, so the viewer has to be
+  // re-driven when the theme changes rather than left to repaint itself.
+  const theme = useTheme();
 
   useEffect(() => {
     let cancelled = false;
@@ -31,12 +40,18 @@ export function Molecule3D({
     Promise.all([api.conformer(smiles), loadMol3D()])
       .then(([conf, $3Dmol]) => {
         if (cancelled || !hostRef.current) return;
-        viewer = $3Dmol.createViewer(hostRef.current, { backgroundColor: SURFACE });
-        viewer.setBackgroundColor(SURFACE, 1);
+        const background = viewerBackground();
+        viewer = $3Dmol.createViewer(hostRef.current, { backgroundColor: background });
+        viewer.setBackgroundColor(background, 1);
         viewer.addModel(conf.molblock, "mol");
         viewer.setStyle(
           {},
-          { stick: { radius: 0.13 }, sphere: { scale: 0.24 } },
+          {
+            // CPK, stated rather than left to 3Dmol's implicit default, so the
+            // 2D and 3D views of one molecule cannot drift apart.
+            stick: { radius: 0.13, colorscheme: elementColorscheme() },
+            sphere: { scale: 0.24, colorscheme: elementColorscheme() },
+          },
         );
         viewer.zoomTo();
         viewer.render();
@@ -58,7 +73,7 @@ export function Molecule3D({
         /* viewer teardown is best-effort */
       }
     };
-  }, [smiles]);
+  }, [smiles, theme]);
 
   return (
     <div className="mol3d" style={{ height }}>

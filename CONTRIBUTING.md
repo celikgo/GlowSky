@@ -61,7 +61,7 @@ Six workflows gate a pull request:
 
 | workflow | what it will not let you merge |
 |---|---|
-| `ci` | lint or type errors; a test failure on Python 3.11, 3.12 or 3.13; coverage under 85%; a frontend type error, test failure or eslint error |
+| `ci` | lint or type errors; a test failure on Python 3.11, 3.12 or 3.13; coverage under 85%; a frontend type error, test failure or eslint error; a raw colour literal, a missing theme token or a contrast regression in the desktop app |
 | `docker` | a Dockerfile that does not build, a compose topology that does not resolve, or an image that cannot run its own migrations |
 | `migrations` | a migration that fails on Postgres, or a `downgrade()` that does not undo its `upgrade()` |
 | `security` | a known-vulnerable dependency, a committed secret, or a regression in the credential and RBAC gates |
@@ -93,6 +93,12 @@ quietly stops being listed as unvalidated.
 headers naming the primary source, how the values were obtained, the rights position,
 and what is *not* claimed. If you add one, match that standard. A validation number
 whose author might be us is not a validation number.
+
+**A structure is drawn on a light ground in every theme, and that is not a bug.**
+Element colours are chemical identity, so a theme must never re-tint them — and no
+published element palette is legible on both a light and a dark ground (the numbers are
+in `apps/desktop/src/theme/cpk.ts`). So the drawing surface is what stays fixed and the
+app around it themes. `.claude/skills/rendering-molecules` has the rest.
 
 **Python 3.11 is the floor and it is load-bearing.** `ruff`'s `target-version = "py311"`
 catches 3.12-only syntax — a backslash inside an f-string expression, for one — that

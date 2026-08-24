@@ -98,6 +98,36 @@ jobs:
           path: coverage.xml
           if-no-files-found: error
 
+  design-tokens:
+    name: design tokens (literals + theme parity + contrast)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      # No `pip install` step and none needed: the checker is stdlib-only,
+      # deliberately. It reads apps/desktop/src/theme/tokens.css and cpk.ts and
+      # recomputes everything it asserts, so the thing standing between a
+      # palette change and a broken light theme is a job that takes ten seconds
+      # and cannot be blamed on a dependency roll.
+      #
+      # What it will not let you merge, in the order the output prints them:
+      #   - a raw colour literal under apps/desktop/src outside the palette and
+      #     the element-colour table (a committed ceiling that only goes down);
+      #   - a `var(--token)` naming something nothing defines — the shape of
+      #     the `--text-primary` bug, which shipped two different whites;
+      #   - a token defined in one theme and missing from another;
+      #   - a theme that moves a ground element colours are measured against,
+      #     which is how a theme change would alter chemical meaning;
+      #   - a text or control pair that stops clearing its WCAG floor;
+      #   - a contrast ratio written in a tokens.css comment that is no longer
+      #     the number that colour actually measures.
+      - name: The desktop design-token contract holds
+        run: python -m scripts.check_design_tokens
+
   frontend:
     name: desktop (tsc + vitest + eslint)
     runs-on: ubuntu-latest

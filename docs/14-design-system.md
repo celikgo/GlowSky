@@ -172,35 +172,43 @@ must be removed.
 
 ### The 3D table
 
-`CPK_3D` — the Jmol table, on `--viewer-canvas` — is gated the same way, with
-the opposite result: **no collisions, and two elements below the floor that
-stay there.**
+`CPK_3D` — the Jmol table, on `--viewer-canvas` — is gated on **collisions only**,
+and it has none. Its contrast is measured and printed on every run, and nothing
+about it can fail a build.
 
-| | |
-|---|---|
-| bromine | 2.68:1 |
-| iodine | 2.42:1 |
-
-There is nowhere to move them. A sweep of every grey ground puts the best
-achievable worst-case at **2.69:1, at pure black** — so no ground clears this
-table, and pure black would buy 0.27 while costing a black rectangle inside a
-themed card. The one alternative 3Dmol ships, its `rasmol` table, still fails
-bromine (2.67:1) *and* introduces five collisions including boron and chlorine
-at the same green.
-
-That trade is worse here than the equivalent one was in 2D, and the reason is
-worth stating: **a 3D scene draws no atom labels.** In the 2D depiction colour
-is a redundant second channel next to the atom symbol, which is what made
-Avalon's halogen collision acceptable. In 3D colour is the *only* identity
-channel, so a collision loses the information rather than making it harder to
-read. `CPK_3D_INDISTINGUISHABLE` is empty and must stay that way.
-
-The 3:1 floor is applied to 3D as a **conservative proxy**, not because WCAG
-1.4.11 is in scope. A 3D atom is a lit sphere with a specular highlight and
+That is a decision rather than an omission. WCAG 1.4.11 is a criterion for flat
+graphics. A 3D atom is a lit sphere with a specular highlight, an outline and
 depth cues, so its rendered pixels span a range around the base colour and a
-flat base-vs-ground ratio understates what a viewer can see. Holding it to the
-flat-graphics standard anyway makes these two numbers an upper bound on the
-problem rather than a description of it.
+flat base-vs-ground ratio does not describe what a viewer sees. Applying a
+text-and-graphics floor there would mean using a number outside its scope and
+then failing builds on it. The 2D depiction is the opposite case — those atom
+labels really are flat glyphs — which is why `CPK_2D` is gated on contrast and
+this one is not.
+
+Two elements do come out low, bromine and iodine, both dark colours on a dark
+ground. `make tokens` prints every ratio along with the best ground the table
+could possibly have, so the situation is visible in the run rather than asserted
+in a document that could drift:
+
+```
+  [CPK_3D on --viewer-canvas — measured, NOT gated]
+          2.68  Br  (under 3.0, not gated)
+          2.42  I   (under 3.0, not gated)
+         best ground for this table: #000000 at 2.69 — nothing above that is reachable
+```
+
+That last line is a live sweep of every grey, not a remembered number: there is
+nowhere to move those two, and pure black would buy 0.27 while costing a black
+rectangle inside a themed card.
+
+**Collisions are gated, and that is the failure mode that matters here.** A 3D
+scene draws **no atom labels**, so colour is the only identity channel — two
+elements sharing one loses the information outright, where in the 2D depiction
+it merely makes it harder to read. That asymmetry is the whole reason `CPK_2D`
+is allowed to spend hue on contrast and `CPK_3D` is not.
+`CPK_3D_INDISTINGUISHABLE` is empty and must stay empty. 3Dmol's `rasmol`
+alternative was measured and rejected on exactly that basis: five collisions,
+including boron and chlorine at the same green.
 
 ## 5. What the app does not encode in colour
 
@@ -230,7 +238,7 @@ not let you merge:
 | 1 | a raw colour literal under `apps/desktop/src` outside the palette and the element table, above the committed ceiling |
 | 1b | a `var(--token)` naming something nothing defines |
 | 2 | a token defined in one theme and missing from another; a colour in the shared `:root` block; a theme offered in the switcher with no block; a theme that moves a molecule ground |
-| 3 | a text or control pair below its WCAG floor; an element colour in **either** palette below the floor that is not published as such; two elements closer than dE 25 that are not published as such; a published shortfall or collision getting worse; a published entry naming an element the palette no longer defines |
+| 3 | a text or control pair below its WCAG floor; a **`CPK_2D`** element colour below the floor that is not published as such; two elements in **either** palette closer than dE 25 that are not published as such; a published shortfall or collision getting worse; a published entry naming an element the palette no longer defines. `CPK_3D` contrast is printed, never gated — see §4 |
 | 4 | a contrast ratio written in a `tokens.css` comment that is not what that colour measures |
 
 `tests/test_design_tokens.py` runs the same checker against inputs that should

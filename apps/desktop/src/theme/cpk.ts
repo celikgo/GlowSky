@@ -104,28 +104,30 @@ export const CPK_2D: ElementPalette = Object.freeze({
  * this repository rather than left implicit inside a vendored bundle, which is
  * what let the 2D and 3D views drift apart in the first place.
  *
- * TWO ELEMENTS ARE BELOW THE 3:1 FLOOR against --viewer-canvas and stay there:
- * bromine 2.68:1 and iodine 2.42:1, both dark colours on a dark ground. Unlike
- * the 2D case there is nowhere to move them to — a sweep of every grey ground
- * puts the best achievable worst-case at 2.69:1, at pure black, so NO ground
- * clears this table. Pure black would buy 0.27 and cost a black rectangle
- * inside a themed card, which is not a trade worth making for a number that
- * still fails.
+ * CPK_3D IS NOT GATED ON CONTRAST, deliberately. WCAG 1.4.11 is a criterion for
+ * flat graphics; a 3D atom is a lit sphere with a specular highlight, an outline
+ * and depth cues, so its rendered pixels span a range around the base colour and
+ * a flat base-vs-ground ratio does not describe what a viewer sees. Applying a
+ * text-and-graphics floor to it would be using a number outside its scope and
+ * then failing builds on it. The 2D depiction is different: those atom labels
+ * really are flat glyphs, and CPK_2D is gated accordingly.
  *
- * The one alternative 3Dmol ships, its `rasmol` table, is worse on both counts:
- * it still fails bromine (2.67:1) and it introduces five collisions, including
- * boron and chlorine at exactly the same green. That is a bad trade here in a
- * way it was not for CPK_2D, because a 3D scene draws NO ATOM LABELS — colour
- * is the only identity channel, so two elements sharing one loses the
- * information rather than making it harder to read. It is also why
- * CPK_3D_INDISTINGUISHABLE is empty and must stay that way.
+ * The ratios are still measured and PRINTED on every run of
+ * scripts/check_design_tokens.py, together with the best ground this table could
+ * possibly have, so the picture stays visible and cannot go stale. Two elements
+ * come out low — bromine and iodine, both dark colours on a dark ground — and
+ * the printed sweep shows there is nowhere to move them: no ground beats 2.69:1
+ * worst-case, at pure black, which would also cost a black rectangle inside a
+ * themed card. Run `make tokens` for the current numbers rather than trusting
+ * the two in this sentence.
  *
- * The 3:1 floor is applied to 3D as a conservative proxy rather than because
- * WCAG 1.4.11 is in scope: a 3D atom is a lit sphere with a specular highlight
- * and depth cues, so its rendered pixels span a range around the base colour
- * and a flat base-vs-ground ratio understates what a viewer can see. Holding it
- * to the flat-graphics standard anyway makes these two numbers an upper bound
- * on the problem rather than a description of it.
+ * WHAT IS GATED HERE IS COLLISIONS, and that is the failure mode that matters in
+ * 3D: a 3D scene draws NO ATOM LABELS, so colour is the only identity channel.
+ * Two elements sharing one loses the information outright, where in the 2D
+ * depiction it only makes it harder to read — which is exactly why CPK_2D is
+ * allowed to spend hue on contrast and this table is not. 3Dmol's `rasmol`
+ * alternative was measured and rejected on that basis: five collisions,
+ * including boron and chlorine at the same green.
  */
 export const CPK_3D: ElementPalette = Object.freeze({
   H: "#FFFFFF",

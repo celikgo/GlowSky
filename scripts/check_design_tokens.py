@@ -479,24 +479,23 @@ CPK_2D_INDISTINGUISHABLE: dict[tuple[str, str], float] = {
     ("15", "53"): 23.5,  # P / I  — both purple
 }
 
-# CPK_3D, the Jmol table, against --viewer-canvas. Two elements are below the
-# floor and are published rather than fixed, because there is nowhere to move
-# them to: a sweep of every grey ground puts the best achievable worst-case at
-# 2.69 (pure black), so NO ground clears this table. The one alternative 3Dmol
-# ships, its `rasmol` table, still fails bromine at 2.67 AND introduces five
-# collisions including boron/chlorine identical — a bad trade in a medium where
-# colour is the only identity channel, because a 3D scene draws no atom labels.
+# CPK_3D IS NOT GATED ON CONTRAST, and that is a decision rather than an
+# oversight. WCAG 1.4.11 is a criterion for flat graphics. A 3D atom is a lit
+# sphere with a specular highlight, an outline and depth cues, so its rendered
+# pixels span a range around the base colour and a flat base-vs-ground ratio
+# does not describe what a viewer sees. Holding it to a text-and-graphics floor
+# would be applying a number outside its scope and then failing builds on it.
 #
-# The 3:1 floor is applied here as a CONSERVATIVE PROXY, not because WCAG 1.4.11
-# is in scope. A 3D atom is a lit sphere with a specular highlight, an outline
-# and depth cues, so its rendered pixels span a range around the base colour and
-# a flat base-vs-ground ratio understates what a viewer can see. Holding it to
-# the flat-graphics standard anyway means these two numbers are an upper bound
-# on the problem rather than a description of it.
-CPK_3D_BELOW_FLOOR: dict[str, float] = {
-    "Br": 2.68,
-    "I": 2.42,
-}
+# The ratios are still MEASURED AND PRINTED on every run, alongside the best
+# ground the table could possibly have, so the situation stays visible and
+# cannot go stale — the same shape as validation.yml's step that prints which
+# benchmarks do not meet their criterion without failing on them. Two elements
+# are dark colours on a dark ground and come out low; no ground fixes that, and
+# the printed sweep says so in the run rather than in a comment somebody has to
+# trust.
+#
+# What IS gated for CPK_3D is collisions, below. That is the failure mode that
+# actually destroys information in 3D.
 
 # None, and it matters more here than in 2D: the 2D depiction draws the atom
 # symbol beside every heteroatom, so colour there is a redundant channel. A 3D
@@ -562,22 +561,29 @@ def check_contrast(
     # identical in every theme (check 2 enforces that), so measure once.
     any_theme = next(d for t, d in themes.items() if t)
     decls = {**shared, **any_theme}
-    for name, ground_token, below in (
-        ("CPK_2D", "--mol-canvas", CPK_2D_BELOW_FLOOR),
-        ("CPK_3D", "--viewer-canvas", CPK_3D_BELOW_FLOOR),
-    ):
-        ground = _colour_of(ground_token, decls)
-        if ground is None:
-            problems.append(
-                f"{ground_token} is not defined; {name}'s colours have no ground "
-                f"to be checked against"
-            )
-            continue
-        problems += check_element_contrast(name, cpk.get(name, {}), ground_token, ground, below, report)
+    canvas = _colour_of("--mol-canvas", decls)
+    if canvas is None:
+        problems.append(
+            "--mol-canvas is not defined; CPK_2D's colours have no ground to be checked against"
+        )
+    else:
+        problems += check_element_contrast(
+            "CPK_2D", cpk.get("CPK_2D", {}), "--mol-canvas", canvas, CPK_2D_BELOW_FLOOR, report
+        )
+
+    # Reported, never gated — see the note above CPK_3D_INDISTINGUISHABLE.
+    viewer = _colour_of("--viewer-canvas", decls)
+    if viewer is not None:
+        report_element_contrast("CPK_3D", cpk.get("CPK_3D", {}), "--viewer-canvas", viewer, report)
 
     problems += check_element_discriminability("CPK_2D", cpk.get("CPK_2D", {}), report)
     problems += check_element_discriminability("CPK_3D", cpk.get("CPK_3D", {}), report)
     return problems, report
+
+
+def _element_sort_key_c(item: tuple[str, object]) -> tuple[int, int | str]:
+    """As _element_sort_key, for a mapping whose values are parsed colours."""
+    return _element_sort_key((item[0], ""))
 
 
 def _element_sort_key(item: tuple[str, str]) -> tuple[int, int | str]:
@@ -637,6 +643,40 @@ def check_element_contrast(
             f"remove the entry"
         )
     return problems
+
+
+def report_element_contrast(
+    name: str,
+    palette: dict[str, str],
+    ground_token: str,
+    ground: tuple[float, float, float, float],
+    report: list[str],
+) -> None:
+    """Measure and print, and return nothing that can fail a build.
+
+    Also prints the best ground this palette could possibly have, because the
+    reason these numbers are not chased is that there is nowhere to chase them
+    to — and a claim like that belongs in the run, not in a comment.
+    """
+    colours = {e: parse_colour(h) for e, h in palette.items()}
+    usable = [c for c in colours.values() if c is not None]
+    report.append(f"\n  [{name} on {ground_token} — measured, NOT gated]")
+    for element, colour in sorted(colours.items(), key=_element_sort_key_c):
+        if colour is None:
+            report.append(f"         ????  {element} is not a colour")
+            continue
+        ratio = contrast_ratio(colour[:3], ground[:3])
+        note = "" if ratio >= NONTEXT_FLOOR else f"  (under {NONTEXT_FLOOR}, not gated)"
+        report.append(f"         {ratio:5.2f}  {element}{note}")
+    if not usable:
+        return
+    best = max(
+        (min(contrast_ratio(c[:3], (float(v),) * 3) for c in usable), v) for v in range(256)
+    )
+    report.append(
+        f"         best ground for this table: #{best[1]:02x}{best[1]:02x}{best[1]:02x} "
+        f"at {best[0]:.2f} — nothing above that is reachable"
+    )
 
 
 def check_element_discriminability(

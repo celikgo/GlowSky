@@ -133,22 +133,29 @@ If you need a fifth halogen, or an element in the purple range, you will hit the
 second ratchet. That is the point: pick a colour that separates, or publish the
 collision with its number.
 
-**`CPK_3D` is gated the same way, and comes out the other way round.** The Jmol
-table has no collisions, and two elements below the floor on `--viewer-canvas`
-that stay there — bromine 2.68:1 and iodine 2.42:1. No ground fixes them: the
-best achievable worst-case over every grey is 2.69:1 at pure black. The one
-alternative 3Dmol ships (`rasmol`) still fails bromine and adds five collisions.
+**`CPK_3D` is gated on collisions only, and has none.** Its contrast is measured
+and printed on every run, and nothing about it can fail a build.
 
-**Do not trade hue for contrast in `CPK_3D` the way `CPK_2D` does.** A 3D scene
-draws no atom labels, so colour is the only identity channel there; in the 2D
-depiction it is a redundant second one next to the atom symbol, which is the
-whole reason Avalon's halogen collision is tolerable. `CPK_3D_INDISTINGUISHABLE`
-is empty and must stay empty.
+That is deliberate. WCAG 1.4.11 is a criterion for flat graphics, and a 3D atom
+is a lit sphere with a specular highlight, an outline and depth cues — its
+rendered pixels span a range around the base colour, so a flat base-vs-ground
+ratio does not describe what a viewer sees. The 2D depiction is the opposite
+case: those atom labels really are flat glyphs. So `CPK_2D` is gated on contrast
+and `CPK_3D` is not, and neither is an oversight.
 
-The 3:1 floor is applied to 3D as a conservative proxy, not because WCAG 1.4.11
-is in scope — a lit sphere with a specular highlight and depth cues is not a
-flat graphic, so the two published numbers are an upper bound on the problem
-rather than a description of it.
+Bromine and iodine do come out low against `--viewer-canvas`. `make tokens`
+prints every ratio plus a live sweep of the best ground the table could have —
+nothing beats 2.69:1 worst-case, at pure black — so there is nowhere to move
+them, and that claim is recomputed rather than remembered.
+
+**Do not trade hue for contrast in `CPK_3D` the way `CPK_2D` does, and do not
+"fix" bromine or iodine by adjusting them.** A 3D scene draws **no atom
+labels**, so colour is the only identity channel there; in the 2D depiction it
+is a redundant second one beside the atom symbol, which is the whole reason
+Avalon's halogen collision is tolerable and a 3D collision would not be.
+`CPK_3D_INDISTINGUISHABLE` is empty and must stay empty. 3Dmol's `rasmol`
+alternative was measured and rejected on that basis: five collisions, including
+boron and chlorine at the same green.
 
 ## What an LLM must never infer here
 

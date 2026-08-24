@@ -214,6 +214,9 @@ def test_ketchers_own_namespace_is_not_our_problem(tmp_path: Path) -> None:
 
 GROUNDS = {"MOL_CANVAS": "#ffffff", "MOL_LABEL": "#536471", "VIEWER_CANVAS": "#0d1117"}
 
+# The real Jmol table, read from the file rather than restated here.
+PALETTE_3D = parse_cpk_ts(CPK_TS.read_text(encoding="utf-8"))["CPK_3D"]
+
 
 def test_a_token_defined_in_one_theme_and_not_another_fails() -> None:
     themes = {"dim": {"--a": "#111111", "--b": "#222222"}, "light": {"--a": "#eeeeee"}}
@@ -293,10 +296,8 @@ def _theme(**tokens: str) -> dict[str, dict[str, str]]:
 def test_a_palette_that_clears_every_floor_reports_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # This one exercises CPK_2D only, so the CPK_3D ratchets are cleared —
-    # otherwise they correctly report entries for a palette that is absent.
+    # This one exercises CPK_2D only.
     monkeypatch.setattr(cdt, "CPK_2D_INDISTINGUISHABLE", {})
-    monkeypatch.setattr(cdt, "CPK_3D_BELOW_FLOOR", {})
     problems, _ = check_contrast(_theme(), {"CPK_2D": {"6": "#000000"}})
     assert problems == []
 
@@ -331,7 +332,6 @@ def test_a_published_shortfall_fails_only_if_it_gets_worse(monkeypatch: pytest.M
     # The mechanism still has to work for the day it is not.
     monkeypatch.setattr(cdt, "CPK_2D_BELOW_FLOOR", {"16": 1.72})
     monkeypatch.setattr(cdt, "CPK_2D_INDISTINGUISHABLE", {})
-    monkeypatch.setattr(cdt, "CPK_3D_BELOW_FLOOR", {})
     ok, _ = check_contrast(_theme(), {"CPK_2D": {"16": "#cccc00"}})
     assert ok == []
     # The colours never move, so a published shortfall getting worse means the
@@ -345,35 +345,40 @@ def test_nothing_in_the_shipped_2d_palette_is_below_the_floor() -> None:
     assert cdt.CPK_2D_BELOW_FLOOR == {}
 
 
-def test_the_3d_palette_publishes_exactly_the_two_it_cannot_fix() -> None:
-    # Bromine and iodine are dark colours on a dark ground, and no ground fixes
-    # them: the best achievable worst-case over every grey is 2.69 at black.
-    assert set(cdt.CPK_3D_BELOW_FLOOR) == {"Br", "I"}
+def test_the_3d_palette_is_gated_on_collisions_only() -> None:
     assert cdt.CPK_3D_INDISTINGUISHABLE == {}
+    assert not hasattr(cdt, "CPK_3D_BELOW_FLOOR")
 
 
-def test_no_ground_clears_the_jmol_table_which_is_why_two_are_published() -> None:
-    # The claim CPK_3D_BELOW_FLOOR's comment makes, recomputed rather than
-    # trusted. If a future palette change made this false, the published
-    # shortfalls would no longer be justified.
-    palette = parse_cpk_ts(CPK_TS.read_text(encoding="utf-8"))["CPK_3D"]
-    colours = [parse_colour(h) for h in palette.values()]
-    best = max(
-        min(cdt.contrast_ratio(c[:3], (float(v),) * 3) for c in colours if c)
-        for v in range(256)
+def test_3d_contrast_cannot_fail_a_build_however_bad_it_gets() -> None:
+    # The point of the decision, stated as a test: WCAG 1.4.11 is a criterion
+    # for flat graphics, and a lit sphere is not one. An element that would be
+    # a hard failure in the 2D depiction is reported here and nothing else.
+    # 1.03:1 — an element all but invisible against the viewport.
+    problems, report = check_contrast(
+        _theme(**{"--viewer-canvas": "#0d1117"}), {"CPK_3D": {"X": "#0d1118"}}
     )
-    assert best < cdt.NONTEXT_FLOOR
-    assert best == pytest.approx(2.69, abs=0.01)
+    assert [p for p in problems if "CPK_3D" in p] == []
+    assert any("NOT gated" in line for line in report)
+    assert any("not gated" in line and "X" in line for line in report)
 
 
-def test_a_3d_element_below_the_floor_and_unpublished_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(cdt, "CPK_3D_BELOW_FLOOR", {})
-    problems, _ = check_contrast(
-        _theme(**{"--viewer-canvas": "#000000"}), {"CPK_3D": {"I": "#940094"}}
-    )
-    assert any("CPK_3D[I]" in p and "not listed" in p for p in problems)
+def test_3d_contrast_is_still_measured_and_printed() -> None:
+    # Not gated is not the same as not looked at. The numbers stay in the run so
+    # they cannot quietly become wrong while nobody is checking them.
+    _, report = check_contrast(_theme(), {"CPK_3D": {"I": "#940094", "H": "#FFFFFF"}})
+    body = "\n".join(report)
+    assert "[CPK_3D on --viewer-canvas — measured, NOT gated]" in body
+    assert "2.42" in body and "18.92" in body
+
+
+def test_the_best_reachable_ground_is_computed_rather_than_asserted() -> None:
+    # The reason the two low numbers are not chased is that there is nowhere to
+    # chase them to. That claim is recomputed on every run instead of living in
+    # a comment, so it cannot go stale.
+    _, report = check_contrast(_theme(), {"CPK_3D": PALETTE_3D})
+    line = next(ln for ln in report if "best ground for this table" in ln)
+    assert "#000000" in line and "2.69" in line
 
 
 def test_a_collision_in_the_3d_palette_is_caught_by_its_own_published_set(
@@ -387,18 +392,6 @@ def test_a_collision_in_the_3d_palette_is_caught_by_its_own_published_set(
     )
     assert any("CPK_3D[N]" in p and "dE 0.0 apart" in p for p in problems)
 
-
-def test_a_below_floor_entry_for_an_element_that_is_gone_is_caught(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(cdt, "CPK_3D_BELOW_FLOOR", {"At": 1.0})
-    problems, _ = check_contrast(_theme(), {"CPK_3D": {"I": "#940094"}})
-    assert any("no longer defines it" in p for p in problems)
-
-
-# ---------------------------------------------------------------------------
-# Check 3b — two different elements that look the same.
-# ---------------------------------------------------------------------------
 
 
 def test_identical_colours_for_two_elements_are_caught(monkeypatch: pytest.MonkeyPatch) -> None:

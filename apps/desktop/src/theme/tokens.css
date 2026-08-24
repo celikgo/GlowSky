@@ -1,52 +1,68 @@
 /*
- * Glowsky design tokens — Twitter "Dim" palette.
+ * Glowsky design tokens.
  *
- * "Dim" is Twitter/X's blue-tinted dark theme (not the pure-black "Lights out").
- * These are the canonical Dim values; everything else in the UI references them so
- * the whole app re-skins from this one file.
+ * Three themes: "dim" (default), "light", and "lights-out", selected by the
+ * `data-theme` attribute. Normally that is on <html>, but the blocks are
+ * scoped to the attribute rather than to :root so any subtree can opt into
+ * another theme — which is how the Settings screen previews a theme the app is
+ * not currently in without restating a single colour. Every colour in the desktop app resolves
+ * through one of the custom properties below; a raw colour literal anywhere
+ * else under apps/desktop/src fails `scripts/check_design_tokens.py`, which
+ * runs in the `design-tokens` job of .github/workflows/ci.yml.
+ *
+ * WHERE THE VALUES COME FROM. These are the Twitter/X palettes, taken from
+ * blaeu-lib `packages/core/src/theme/themes/twitter.ts`, which reproduces X's
+ * three colour schemes with the contrast corrections X's own values need. That
+ * file is the source; it is cited here rather than re-derived, the same way
+ * this repository cites a paper rather than restating a model. Its three
+ * corrections all apply here:
+ *
+ *   1. White on X's #1D9BF0 is exactly 3.00:1 — X's most-cited contrast
+ *      failure, and below AA for text. A filled button therefore takes
+ *      --accent-strong (#1578C2, white label 4.67:1); the vivid #1D9BF0 stays
+ *      as the link and mark colour, where 3:1 is the applicable floor.
+ *   2. On white, X's snap-yellow #FFD400 is 1.43:1 — invisible. The light
+ *      theme's --warning is deepened to #A16207. On the dark grounds the
+ *      yellow measures 10–14:1, so dim and lights-out keep it.
+ *   3. Lights-out muted text on the panel grey measured 3.88:1 in X's own
+ *      values; blaeu-lib nudged it to #7e8388. This app paints muted text on a
+ *      third, lighter surface as well, where #7e8388 is 4.32:1 — one further
+ *      step to #848a8f clears it everywhere.
+ *
+ * WHERE THEY DO NOT. blaeu-lib is a map library and defines seventeen colour
+ * roles; this app paints text on four different surfaces and needs a few more.
+ * Tokens with no blaeu-lib counterpart (--bg-elevated-2, --bg-input,
+ * --border-control, the --*-subtle tints, the accent interaction ramp) are
+ * X's own values where X has one, and computed otherwise. Every one of them
+ * carries its measured contrast ratio in the comment beside it, and
+ * scripts/check_design_tokens.py recomputes all of them from this file on
+ * every push — so a ratio written here that stops being true fails a build.
+ *
+ * TWO GROUNDS DO NOT FOLLOW THE THEME, ON PURPOSE: --mol-canvas and
+ * --viewer-canvas. Element colours are chemical identity and must not be
+ * re-tinted (see src/theme/cpk.ts and .claude/skills/rendering-molecules), and
+ * no published element palette is legible on both a light and a dark ground —
+ * that is measured, not asserted. So the surface a molecule is drawn on is
+ * fixed to the one its palette is defined against, and it is written out
+ * identically in all three themes rather than hoisted, so that changing it in
+ * one theme is a visible, reviewable act.
+ *
+ * ADDING A TOKEN: define it in ALL THREE blocks, even when the value repeats.
+ * CI fails on a token present in one theme and missing from another. See
+ * `.claude/skills/updating-design-tokens`.
  */
+
+/* ---------------------------------------------------------------------------
+   Theme-invariant. Nothing here encodes a colour; a light theme does not want
+   different corner radii.
+   --------------------------------------------------------------------------- */
 :root {
-  /* Surfaces */
-  --bg: #15202b; /* app background (Dim primary) */
-  --bg-elevated: #1e2732; /* cards, panels, modals */
-  --bg-elevated-2: #243340; /* nested surfaces / chips */
-  --bg-hover: #1c2a35; /* row / item hover */
-  --bg-active: #22303c; /* pressed / selected */
-  --bg-input: #273340; /* text inputs */
-  --scrim: rgba(91, 112, 131, 0.4); /* modal backdrop (Twitter scrim) */
-
-  /* Lines */
-  --border: #38444d; /* dividers, input borders (Dim) */
-  --border-strong: #5b7083;
-
-  /* Text */
-  --text: #f7f9f9; /* primary */
-  --text-secondary: #8b98a5; /* muted / metadata */
-  --text-tertiary: #5b7083; /* faint / disabled */
-  --text-on-accent: #ffffff;
-
-  /* Brand / accent (Twitter blue) */
-  --accent: #1d9bf0;
-  --accent-hover: #1a8cd8;
-  --accent-pressed: #177bbf;
-  --accent-subtle: rgba(29, 155, 240, 0.1); /* tinted backgrounds */
-  --accent-border: rgba(29, 155, 240, 0.4);
-
-  /* Semantic (Twitter's accent set) */
-  --success: #00ba7c;
-  --warning: #ffd400;
-  --danger: #f4212e;
-  --like: #f91880;
-
   /* Radii — Twitter uses generously rounded corners */
   --radius-sm: 4px;
+  --radius-md: 8px;
   --radius: 12px;
   --radius-lg: 16px;
   --radius-pill: 9999px;
-
-  /* Elevation */
-  --shadow-1: 0 0 12px rgba(0, 0, 0, 0.35);
-  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.5);
 
   /* Type */
   --font: "Helvetica Neue", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto,
@@ -56,4 +72,187 @@
   /* Layout */
   --sidebar-w: 248px;
   --topbar-h: 53px;
+}
+
+/* ---------------------------------------------------------------------------
+   dim — the default. X's blue-tinted dark theme, not the pure-black one.
+   --------------------------------------------------------------------------- */
+[data-theme="dim"] {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg: #15202b; /* app background (blaeu-lib twitterDim canvas) */
+  --bg-elevated: #1e2732; /* cards, panels, modals (surfaceMuted) */
+  --bg-elevated-2: #22303c; /* nested surfaces / chips */
+  --bg-hover: #1c2a35; /* row / item hover */
+  --bg-active: #22303c; /* pressed / selected */
+  --bg-input: #1b2731; /* inputs recess below the card they sit in */
+  --scrim: rgba(91, 112, 131, 0.4); /* modal backdrop (X's scrim) */
+  --bg-translucent: rgba(21, 32, 43, 0.85); /* --bg at 85%, for the blurred top bar */
+  --shimmer: rgba(255, 255, 255, 0.05); /* the sweep across a loading placeholder */
+
+  /* Lines */
+  --border: #38444d; /* dividers — decorative, no contrast floor */
+  --border-control: #6b8090; /* control outlines — 3.68:1 on --bg-elevated */
+  --border-strong: #5b7083;
+
+  /* Text */
+  --text: #f7f9f9; /* 15.61:1 on --bg */
+  --text-secondary: #8b98a5; /* 5.60:1 on --bg, 4.58:1 on --bg-elevated-2 */
+  --text-tertiary: #5b7083; /* decoration only (dots, rules) — 3.21:1 on --bg, never text */
+  --text-on-accent: #ffffff; /* 4.67:1 on --accent-strong */
+
+  /* Brand / accent */
+  --accent: #1d9bf0; /* links and marks — 5.03:1 on --bg-elevated */
+  --accent-strong: #1578c2; /* filled-button ground; its label ratio is on --text-on-accent */
+  --accent-strong-hover: #136caf; /* X's own -10% step applied to --accent-strong */
+  --accent-strong-pressed: #115f9a; /* X's own -20.5% step */
+  --accent-subtle: rgba(29, 155, 240, 0.12); /* tinted backgrounds */
+  --accent-border: rgba(29, 155, 240, 0.4);
+  --brand-from: #4fb6ff; /* logo gradient only — decorative, carries no meaning */
+  --brand-to: #1d9bf0;
+  --on-accent-track: rgba(255, 255, 255, 0.35); /* spinner ring on a filled button */
+
+  /* Semantic. Each is painted as text both directly on a card and on its own
+     tint, so both grounds are quoted. --danger is blaeu-lib's dim error rather
+     than X's #f4212e, which measures only 3.67:1 here — see the header. */
+  --success: #00ba7c; /* 5.98:1 on --bg-elevated, 4.93:1 on --success-subtle */
+  --success-subtle: rgba(0, 186, 124, 0.12);
+  --warning: #ffd400; /* 10.54:1 on --bg-elevated, 7.51:1 on --warning-subtle */
+  --warning-subtle: rgba(255, 212, 0, 0.14);
+  --danger: #f87171; /* 5.46:1 on --bg-elevated, 4.60:1 on --danger-subtle */
+  --danger-subtle: rgba(248, 113, 113, 0.12);
+
+  /* Elevation */
+  --shadow-1: 0 0 12px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.5);
+
+  /* Chemistry surfaces — see the header. Identical in every theme by design. */
+  --mol-canvas: #ffffff; /* 2D depiction ground: what the CPK_2D palette is defined against */
+  --mol-label: #536471; /* legend/annotation inside the depiction: 6.12:1 on --mol-canvas */
+  --viewer-canvas: #0d1117; /* 3D viewport ground: what CPK_3D (Jmol) is defined against */
+  --viewer-surface: #8b98a5; /* receptor surface tint — not an element colour */
+}
+
+/* ---------------------------------------------------------------------------
+   light — the theme a chemist switches to before printing, projecting or
+   screenshotting a result. Not cosmetic: a dark-only app pushes them out of
+   the tool at exactly the moment they want to share what it produced.
+   --------------------------------------------------------------------------- */
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg: #ffffff; /* blaeu-lib twitterLight canvas */
+  --bg-elevated: #f7f9f9; /* surfaceMuted */
+  --bg-elevated-2: #eff3f4; /* X's light chip grey */
+  --bg-hover: #f7f9f9;
+  --bg-active: #eff3f4;
+  --bg-input: #ffffff;
+  --scrim: rgba(15, 20, 25, 0.4);
+  --bg-translucent: rgba(255, 255, 255, 0.85);
+  --shimmer: rgba(15, 20, 25, 0.05);
+
+  /* Lines */
+  --border: #cfd9de; /* blaeu-lib border */
+  --border-control: #7c8b95; /* control outlines — 3.32:1 on --bg-elevated */
+  --border-strong: #8899a6;
+
+  /* Text */
+  --text: #0f1419; /* 18.51:1 on --bg */
+  --text-secondary: #536471; /* 6.12:1 on --bg, 5.48:1 on --bg-elevated-2 */
+  --text-tertiary: #7c8b95; /* decoration only — 3.51:1 on --bg, never text */
+  --text-on-accent: #ffffff; /* 4.67:1 on --accent-strong */
+
+  /* Brand / accent. On white the vivid #1d9bf0 measures 3.00:1 — fine for a
+     mark, below AA for a link — so the light theme's --accent is one further
+     step down X's ramp, and the vivid blue survives only in --brand-from. */
+  --accent: #136caf; /* 5.24:1 on --bg-elevated */
+  --accent-strong: #1578c2; /* filled-button ground; its label ratio is on --text-on-accent */
+  --accent-strong-hover: #136caf;
+  --accent-strong-pressed: #115f9a;
+  --accent-subtle: rgba(19, 108, 175, 0.1);
+  --accent-border: rgba(19, 108, 175, 0.35);
+  --brand-from: #4fb6ff;
+  --brand-to: #1d9bf0;
+  --on-accent-track: rgba(255, 255, 255, 0.35); /* spinner ring on a filled button */
+
+  /* Semantic — blaeu-lib's light set, darkened one step. Its values clear AA
+     against the surface (success 5.08, warning 4.66, danger 4.75) but this app
+     also paints them on their own 10% tint, where they measured 4.42, 4.10 and
+     4.06. Darkened until they clear on the tint too. */
+  --success: #006e4c; /* 5.96:1 on --bg-elevated, 5.15:1 on --success-subtle */
+  --success-subtle: rgba(0, 110, 76, 0.1);
+  --warning: #965900; /* 5.33:1 on --bg-elevated, 4.66:1 on --warning-subtle */
+  --warning-subtle: rgba(150, 89, 0, 0.1);
+  --danger: #cb1926; /* 5.36:1 on --bg-elevated, 4.55:1 on --danger-subtle */
+  --danger-subtle: rgba(203, 25, 38, 0.1);
+
+  /* Elevation — a light ground cannot carry the dark theme's shadow weight. */
+  --shadow-1: 0 0 12px rgba(15, 20, 25, 0.1);
+  --shadow-2: 0 8px 28px rgba(15, 20, 25, 0.16);
+
+  /* Chemistry surfaces — identical to every other theme, on purpose. */
+  --mol-canvas: #ffffff;
+  --mol-label: #536471;
+  --viewer-canvas: #0d1117;
+  --viewer-surface: #8b98a5;
+}
+
+/* ---------------------------------------------------------------------------
+   lights-out — X's pure-black theme, for OLED panels.
+   --------------------------------------------------------------------------- */
+[data-theme="lights-out"] {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg: #000000; /* blaeu-lib twitterBlack canvas */
+  --bg-elevated: #16181c; /* surfaceMuted */
+  --bg-elevated-2: #1c1f23;
+  --bg-hover: #16181c;
+  --bg-active: #1c1f23;
+  --bg-input: #101215;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --bg-translucent: rgba(0, 0, 0, 0.85);
+  --shimmer: rgba(255, 255, 255, 0.06);
+
+  /* Lines */
+  --border: #2f3336; /* blaeu-lib border */
+  --border-control: #5e686f; /* control outlines — 3.12:1 on --bg-elevated */
+  --border-strong: #536471;
+
+  /* Text */
+  --text: #e7e9ea; /* 17.24:1 on --bg */
+  --text-secondary: #848a8f; /* 6.01:1 on --bg, 4.74:1 on --bg-elevated-2 */
+  --text-tertiary: #536471; /* decoration only — 3.43:1 on --bg, never text */
+  --text-on-accent: #ffffff; /* 4.67:1 on --accent-strong */
+
+  /* Brand / accent */
+  --accent: #1d9bf0; /* 7.00:1 on --bg */
+  --accent-strong: #1578c2; /* filled-button ground; its label ratio is on --text-on-accent */
+  --accent-strong-hover: #136caf;
+  --accent-strong-pressed: #115f9a;
+  --accent-subtle: rgba(29, 155, 240, 0.12);
+  --accent-border: rgba(29, 155, 240, 0.4);
+  --brand-from: #4fb6ff;
+  --brand-to: #1d9bf0;
+  --on-accent-track: rgba(255, 255, 255, 0.35); /* spinner ring on a filled button */
+
+  /* Semantic */
+  --success: #00ba7c; /* 7.04:1 on --bg-elevated, 5.90:1 on --success-subtle */
+  --success-subtle: rgba(0, 186, 124, 0.12);
+  --warning: #ffd400; /* 12.42:1 on --bg-elevated, 8.97:1 on --warning-subtle */
+  --warning-subtle: rgba(255, 212, 0, 0.14);
+  --danger: #f87171; /* 6.43:1 on --bg-elevated, 5.44:1 on --danger-subtle */
+  --danger-subtle: rgba(248, 113, 113, 0.12);
+
+  /* Elevation */
+  --shadow-1: 0 0 12px rgba(0, 0, 0, 0.6);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.75);
+
+  /* Chemistry surfaces — identical to every other theme, on purpose. */
+  --mol-canvas: #ffffff;
+  --mol-label: #536471;
+  --viewer-canvas: #0d1117;
+  --viewer-surface: #8b98a5;
 }

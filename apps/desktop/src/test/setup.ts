@@ -36,6 +36,23 @@ if (typeof localStorage.clear !== "function") {
   });
 }
 
+// jsdom under this vitest env has no matchMedia at all, and the theme store
+// consults it to resolve a "system" choice. Reports light: false, i.e. dark,
+// which is the app's default theme — so a test that says nothing about the
+// theme gets the default rather than an exception.
+if (typeof window.matchMedia !== "function") {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
 beforeEach(() => {
   localStorage.clear();
 });

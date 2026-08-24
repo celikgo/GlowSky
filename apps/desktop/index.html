@@ -1,10 +1,40 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dim">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <!-- Both, not "dark": the UA paints form controls, scrollbar gutters and the
+         pre-paint canvas from this, and the app now has a light theme. The live
+         value is narrowed per theme by `color-scheme` in src/theme/tokens.css. -->
+    <meta name="color-scheme" content="light dark" />
     <title>Glowsky</title>
+    <script>
+      // Runs before first paint, on purpose. Applying the theme from React
+      // means one frame of the default theme first, which on a light-theme
+      // user's machine is a full-screen dark flash on every launch.
+      //
+      // This is a hand-inlined copy of readChoice + resolveTheme from
+      // src/theme/theme.ts. src/theme/theme.test.ts parses this file and
+      // asserts the key, the theme names and the "system" mapping still agree
+      // with that module, so the copy cannot drift silently.
+      (function () {
+        var CHOICES = ["system", "dim", "light", "lights-out"];
+        var choice = "dim";
+        try {
+          var stored = localStorage.getItem("glowsky.theme");
+          if (CHOICES.indexOf(stored) !== -1) choice = stored;
+        } catch (e) {
+          // Storage unavailable; the default in the attribute above stands.
+        }
+        if (choice === "system") {
+          choice =
+            window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dim";
+        }
+        document.documentElement.setAttribute("data-theme", choice);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

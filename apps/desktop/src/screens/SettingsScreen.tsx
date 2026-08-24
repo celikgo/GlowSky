@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { setThemeChoice, useThemeChoice } from "../hooks/useTheme";
+import { THEME_CHOICES, THEME_LABELS } from "../theme/theme";
 import {
   api,
   ApiError,
@@ -22,6 +24,7 @@ function errMsg(e: unknown): string {
 }
 
 export function SettingsScreen() {
+  const themeChoice = useThemeChoice();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [creds, setCreds] = useState<Credential[]>([]);
   const [routes, setRoutes] = useState<RouteInfo[]>([]);
@@ -370,6 +373,46 @@ export function SettingsScreen() {
             </div>
           );
         })}
+      </section>
+
+      {/* Appearance */}
+      <div className="section-title">Appearance</div>
+      <p className="settings__note">
+        Structures are drawn on a light ground in every theme. Element colours are chemical
+        identity and are not re-tinted, and no published element palette stays legible on
+        both a light and a dark ground — so the app around a molecule changes and the
+        molecule does not.
+      </p>
+      <section className="card settings__group">
+        <div className="settings__row">
+          <div className="settings__rowlabel">
+            <span className="settings__provider">Theme</span>
+            <span className="chip">{THEME_LABELS[themeChoice]}</span>
+          </div>
+          <div className="settings__themes" role="radiogroup" aria-label="Theme">
+            {THEME_CHOICES.map((choice) => (
+              <button
+                key={choice}
+                type="button"
+                role="radio"
+                aria-checked={themeChoice === choice}
+                className={`settings__theme ${
+                  themeChoice === choice ? "settings__theme--active" : ""
+                }`}
+                onClick={() => setThemeChoice(choice)}
+              >
+                {/* The swatch opts its own subtree into the theme it previews,
+                    so it shows that theme's real tokens rather than a copy. */}
+                <span
+                  className="settings__swatch"
+                  data-theme={choice === "system" ? undefined : choice}
+                  aria-hidden
+                />
+                {THEME_LABELS[choice]}
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
     </div>
   );

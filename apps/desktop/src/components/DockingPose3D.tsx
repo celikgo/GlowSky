@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { loadMol3D, SURFACE, type Mol3DViewer } from "../lib/mol3d";
+import {
+  elementColorscheme,
+  loadMol3D,
+  viewerBackground,
+  type Mol3DViewer,
+} from "../lib/mol3d";
+import { useTheme } from "../hooks/useTheme";
+import { LIGAND_CARBON } from "../theme/cpk";
+import { readToken } from "../theme/theme";
 
 /**
  * Receptor + ligand-pose overlay. Renders the receptor as a cartoon and the docked
@@ -20,6 +28,8 @@ export function DockingPose3D({
   const hostRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // See Molecule3D: a WebGL canvas has to be told about a theme change.
+  const theme = useTheme();
 
   useEffect(() => {
     let cancelled = false;
@@ -30,23 +40,30 @@ export function DockingPose3D({
     loadMol3D()
       .then(($3Dmol) => {
         if (cancelled || !hostRef.current) return;
-        viewer = $3Dmol.createViewer(hostRef.current, { backgroundColor: SURFACE });
-        viewer.setBackgroundColor(SURFACE, 1);
+        const background = viewerBackground();
+        viewer = $3Dmol.createViewer(hostRef.current, { backgroundColor: background });
+        viewer.setBackgroundColor(background, 1);
 
         // Receptor: a spectrum cartoon plus a faint translucent pocket surface.
         const receptor = viewer.addModel(receptorPdb, "pdb");
         viewer.setStyle({ model: receptor }, { cartoon: { color: "spectrum", opacity: 0.9 } });
         viewer.addSurface(
           $3Dmol.SurfaceType.VDW,
-          { opacity: 0.55, color: "#8b98a5" },
+          // A pocket surface is geometry, not an element, so it is a token.
+          { opacity: 0.55, color: readToken("--viewer-surface") },
           { model: receptor },
         );
 
-        // Ligand pose: ball-and-stick, the focus of the view.
+        // Ligand pose: ball-and-stick, the focus of the view. Cyan carbon is
+        // the standard way a docking figure separates ligand from receptor —
+        // carbon is the one element whose colour carries "which molecule is
+        // this" rather than "which element is this". Every heteroatom keeps
+        // its CPK colour; see src/theme/cpk.ts.
         const lig = viewer.addModel(ligand, ligandFormat);
+        const ligandStyle = { colorscheme: elementColorscheme(LIGAND_CARBON) };
         viewer.setStyle(
           { model: lig },
-          { stick: { radius: 0.16, colorscheme: "cyanCarbon" }, sphere: { scale: 0.26 } },
+          { stick: { radius: 0.16, ...ligandStyle }, sphere: { scale: 0.26, ...ligandStyle } },
         );
 
         viewer.zoomTo({ model: lig });
@@ -67,7 +84,7 @@ export function DockingPose3D({
         /* viewer teardown is best-effort */
       }
     };
-  }, [receptorPdb, ligand, ligandFormat]);
+  }, [receptorPdb, ligand, ligandFormat, theme]);
 
   return (
     <div className="pose3d" style={{ height }}>

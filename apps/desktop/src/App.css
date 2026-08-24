@@ -37,7 +37,7 @@
   width: 34px;
   height: 34px;
   border-radius: var(--radius-pill);
-  background: radial-gradient(circle at 30% 30%, #4fb6ff, var(--accent));
+  background: radial-gradient(circle at 30% 30%, var(--brand-from), var(--brand-to));
   box-shadow: 0 0 16px var(--accent-border);
   flex-shrink: 0;
 }
@@ -86,7 +86,7 @@
   justify-content: space-between;
   padding: 0 18px;
   border-bottom: 1px solid var(--border);
-  background: rgba(21, 32, 43, 0.85);
+  background: var(--bg-translucent);
   backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
@@ -155,7 +155,7 @@
   margin-top: 12px;
   padding: 10px 14px;
   border-radius: var(--radius);
-  background: rgba(244, 33, 46, 0.1);
+  background: var(--danger-subtle);
   color: var(--danger);
   font-size: 14px;
 }
@@ -216,7 +216,6 @@
   font-weight: 700;
 }
 .molstruct {
-  /* Faint inset panel; the depiction itself is transparent with light bonds. */
   background: var(--bg);
   border-radius: var(--radius);
   border: 1px solid var(--border);
@@ -230,6 +229,13 @@
   height: 100%;
   display: block;
 }
+/* The drawn depiction sits on the molecule ground, which does not follow the
+   theme — the element colours are defined against it. See src/theme/cpk.ts.
+   The frame around it (border, radius, the two states below) does follow. */
+.molstruct--drawn {
+  background: var(--mol-canvas);
+}
+
 .molstruct--loading {
   background: var(--bg-elevated-2);
   position: relative;
@@ -241,7 +247,7 @@
   background: linear-gradient(
     100deg,
     transparent 30%,
-    rgba(255, 255, 255, 0.05) 50%,
+    var(--shimmer) 50%,
     transparent 70%
   );
   background-size: 200% 100%;
@@ -254,7 +260,7 @@
 }
 .molstruct--empty {
   background: var(--bg-elevated-2);
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
@@ -321,7 +327,7 @@
   background: var(--bg-elevated);
 }
 .mol3d__overlay--error {
-  color: var(--danger, #f4212e);
+  color: var(--danger);
   padding: 0 12px;
   text-align: center;
 }
@@ -421,7 +427,7 @@
   background: var(--bg-elevated);
 }
 .pose3d__overlay--error {
-  color: var(--danger, #f4212e);
+  color: var(--danger);
 }
 .btn--ghost {
   background: var(--bg-elevated-2);
@@ -782,8 +788,8 @@
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
+  border: 2px solid var(--on-accent-track);
+  border-top-color: var(--text-on-accent);
   border-radius: var(--radius-pill);
   animation: spin 0.7s linear infinite;
 }
@@ -794,8 +800,8 @@
   width: 13px;
   height: 13px;
   margin-left: 8px;
-  border-color: rgba(120, 130, 145, 0.4);
-  border-top-color: var(--accent, #1d9bf0);
+  border-color: var(--border);
+  border-top-color: var(--accent);
 }
 @keyframes spin {
   to {
@@ -903,7 +909,9 @@
   position: relative;
   flex: 1;
   min-height: 0;
-  background: #fff; /* Ketcher's drawing surface is light by design */
+  /* Ketcher draws structures, so it gets the molecule ground, not the theme's.
+     See src/theme/cpk.ts for why that surface does not follow the theme. */
+  background: var(--mol-canvas);
 }
 /* Ketcher renders into its own root; make it fill the canvas area. */
 .editor-modal__canvas > * {
@@ -1020,8 +1028,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 30% 30%, #4fb6ff, var(--accent));
-  color: #fff;
+  background: radial-gradient(circle at 30% 30%, var(--brand-from), var(--brand-to));
+  color: var(--text-on-accent);
   font-size: 15px;
 }
 .msg__text {
@@ -1218,7 +1226,7 @@
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-2);
 }
 .palette__input {
   width: 100%;
@@ -1577,4 +1585,46 @@
 }
 .datatable td.datatable__neg {
   color: var(--danger);
+}
+
+/* --- Settings: theme switcher ---------------------------------------------- */
+
+.settings__themes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings__theme {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-control);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+}
+.settings__theme:hover {
+  background: var(--bg-hover);
+}
+.settings__theme--active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  font-weight: 700;
+}
+
+/* Each swatch carries the data-theme it previews, so these two tokens resolve
+   inside that theme's block rather than the live one. No colour is restated.
+   The "system" swatch has no data-theme and therefore shows the live theme,
+   which is exactly what "match system" means. */
+.settings__swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  border: 1px solid var(--border-control);
+  background: linear-gradient(135deg, var(--bg) 50%, var(--accent) 50%);
 }

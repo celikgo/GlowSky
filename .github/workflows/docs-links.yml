@@ -78,6 +78,7 @@ jobs:
             --exclude '\$\{'
             './*.md'
             './docs/**/*.md'
+            './.claude/skills/**/*.md'
             './apps/desktop/README.md'
             './apps/api/**/*.py'
             './services/**/*.py'

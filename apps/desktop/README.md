@@ -7,9 +7,21 @@ over WebSockets (`WS /agent/design/stream`, `WS /agent/chat/stream` — the JWT 
 init frame, since a WebSocket can't send an `Authorization` header); the chemistry/agent
 compute lives there, not in the client.
 
-Themed in the **Twitter "Dim"** palette (the blue-tinted dark theme). All colors come
-from a single tokens file — `src/theme/tokens.css` — so the whole app re-skins from one
-place.
+Three themes — **Dim** (X's blue-tinted dark, the default), **Light** and **Lights out** —
+plus a "match system" option, switchable in Settings and persisted. The theme is applied
+by an inline script in `index.html` *before first paint*, because applying it from React
+means a frame of the wrong theme on every launch.
+
+Every colour resolves through `src/theme/tokens.css`, so the whole app re-skins from one
+file. `scripts/check_design_tokens.py` (CI job `design-tokens`) fails on a raw colour
+literal anywhere else, on a token defined in one theme and missing from another, and on
+any text or control pair that stops clearing its WCAG floor.
+
+**Molecules are the exception, deliberately.** Atom colours are chemical identity, so
+they live in `src/theme/cpk.ts` and never follow the theme — and because no published
+element palette is legible on both a light and a dark ground (measured; the numbers are
+in that file), the surface a structure is drawn on does not follow the theme either.
+See `docs/14-design-system.md` §4.
 
 ## Prerequisites
 

@@ -2,7 +2,7 @@ PY ?= .venv313/bin/python
 PIP ?= .venv313/bin/pip
 ALEMBIC ?= $(PY) -m alembic
 
-.PHONY: venv install test cov validate dois social lint fix run demo clean migrate \
+.PHONY: venv install test cov validate dois tokens social lint fix run demo clean migrate \
         migration \
         migrate-down \
         migrate-history desktop desktop-install desktop-build
@@ -30,6 +30,9 @@ social:              ## Regenerate the social-preview image from live computed v
 
 dois:                ## Verify every DOI cited in the tree is registered (needs network)
 	$(PY) -m scripts.check_dois
+
+tokens:              ## Check the desktop design-token contract (literals, theme parity, contrast)
+	$(PY) -m scripts.check_design_tokens
 
 lint:                ## ruff + mypy — the exact checks .github/workflows/ci.yml runs
 	$(PY) -m ruff check apps services tests scripts migrations
